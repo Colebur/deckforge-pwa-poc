@@ -12,7 +12,7 @@
 ## Required iPhone trial — not yet verified
 
 Device: iPhone 15 Pro Max / iOS 27.0
-URL: __________________________
+URL: https://colebur.github.io/deckforge-pwa-poc/
 Date: __________________________
 Installed from Home Screen: __________________________
 
@@ -56,3 +56,14 @@ Cole paused before leaving for work. The final source compiles and all seven rul
 - The updated cue player accepted tone/loop requests and the five-second round completed without browser errors. Physical audibility and iOS interruptions remain unverified.
 - Added explicit media byte-range responses for Safari and a Check Audio Cache button. With the local server stopped, the latest module service worker served the cached app and returned HTTP 206 with exactly two requested audio bytes.
 - Cole authorized creating a separate public GitHub Pages repository, then signed into GitHub. Repository `Colebur/deckforge-pwa-poc` was created through the browser. Publication is being configured.
+
+## GitHub Pages publication — September 30, 2026
+
+- Separate public repository: https://github.com/Colebur/deckforge-pwa-poc
+- First automated build/test/deployment passed: https://github.com/Colebur/deckforge-pwa-poc/actions/runs/36762243873
+- All uploaded source, scripts, tests, workflow and public assets matched the local files byte for byte.
+- Live HTTPS app: https://colebur.github.io/deckforge-pwa-poc/
+- Live Mac browser showed Ready · cached for offline use; saved marker survived reload; Check Audio Cache returned HTTP 206 with exactly two bytes. No warning/error browser logs were reported. This live check was online; actual disconnected cold launch was tested locally as recorded above and remains pending on iPhone.
+- GitHub reported a non-blocking deprecation warning for older official action runtimes and an upcoming Ubuntu runner change. The deployment succeeded.
+- Private Mac paths/email were removed from public documentation before upload. Native project remains untouched.
+- iPhone Home Screen installation, actual audio, motion, background behavior, and multi-day storage checks remain pending. No migration approved or performed.

@@ -2,7 +2,7 @@
 
 This experiment answers whether the important DeckForge experience is practical as a Home Screen web app on Cole's iPhone 15 Pro Max / iOS 27. It is **not a full migration**. The native sibling folder `../DeckForge`, its Xcode project, Git repository, decks, and bundle identifier are untouched.
 
-This folder is its own Git repository, independent of the native app. The separate public PWA repository is https://github.com/Colebur/deckforge-pwa-poc. Pages publication is being configured; native DeckForge is not uploaded.
+This folder is its own Git repository, independent of the native app. The separate public PWA repository is https://github.com/Colebur/deckforge-pwa-poc. The tested PWA is live at **https://colebur.github.io/deckforge-pwa-poc/**. Native DeckForge is not uploaded.
 
 ## What you can try
 
@@ -66,15 +66,11 @@ GitHub Pages is a suitable static HTTPS host for this personal experiment. On Gi
 
 A ready-to-use workflow lives in `.github/workflows/pages.yml`. It builds/tests first and publishes only `dist/`. This app uses relative URLs and a scoped service worker, so it supports a project URL such as `https://YOUR-USERNAME.github.io/deckforge-pwa-poc/`.
 
-To set up later, once you approve publishing this prototype:
+The separate public repository has been created and its source uploaded. Pages uses **GitHub Actions**, with HTTPS enforced. The first automated build/test/deployment succeeded on September 30, 2026. Open **https://colebur.github.io/deckforge-pwa-poc/** in iPhone Safari, including the trailing slash. Your Mac can be asleep or switched off; GitHub serves the app files.
 
-1. Sign into GitHub. Create a **public**, empty repository named `deckforge-pwa-poc`; leave README/license/.gitignore initialization unchecked.
-2. Push **this folder's** repository, not `../DeckForge`, using your preferred Git client. GitHub Desktop: File → Add Local Repository → select this folder; Publish repository; uncheck Keep this code private. You can instead add the empty repository URL as `origin` and push `main` with Git if you already have authentication configured.
-3. In the repository, choose **Settings → Pages → Build and deployment → Source → GitHub Actions**.
-4. Open **Actions → Build, test and publish PWA → Run workflow → main → Run workflow**. Wait for success; Settings → Pages then shows the exact live address.
-5. Open that exact HTTPS address in iPhone Safari, including the repository folder and trailing slash.
+Future source commits to `main` trigger the workflow automatically. It compiles TypeScript, runs all nine tests, and publishes only `dist/`. Inspect **Actions → Build, test and publish PWA** for the green success result. The local POC repository preserves the original development checkpoints; the public repository currently has the browser-upload commit history. These are separate histories, so do not force-push one over the other. No Git command-line credentials were configured during browser publication.
 
-The workflow has been prepared locally; an actual GitHub deployment has not been executed or verified. Do not move the live URL later without planning a deck export/restore path; browser data is scoped to its website origin, and multiple PWAs on the same origin require careful storage namespacing before wider distribution.
+The live app was checked for HTTPS, offline-cache readiness, a saved marker surviving reload, successful two-byte audio range responses, and no browser warnings/errors. Physical iPhone results remain pending. Do not move the live URL later without planning a deck export/restore path; browser data is scoped to its website origin, and multiple PWAs on the same origin require careful storage namespacing before wider distribution.
 
 Official sources: [GitHub Pages availability](https://docs.github.com/en/pages/getting-started-with-github-pages), [custom workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
 
