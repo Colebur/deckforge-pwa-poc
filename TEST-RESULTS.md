@@ -1,69 +1,35 @@
-# DeckForge PWA feasibility results
+# DeckForge PWA verification — version 0.2
 
-## Verified on the Mac browser
+## Automated and Mac checks
 
-- TypeScript strict build succeeds.
-- Nine automated rule/media tests pass: paste cleanup/Unicode/duplicates, lookup bounds, 2,000-card shuffle integrity, round deck snapshot/use-before-refill, pause/resume and late answers, pass/refill behavior, invalid/empty inputs and single-card decks, Safari byte ranges, and invalid-range handling.
-- Browser screen checks: create/rename deck, add/edit/delete test card, bulk import five cards, preserve duplicate Beyoncé and `-5 degrees`, fixed lookup, Previous/Next/Random, Got It +1 / Pass +0, pause/resume.
-- Responsive preview: 430 × 932 portrait and 932 × 430 landscape. Landscape has no horizontal overflow; game controls are at least 48 pixels high. This is a viewport test, not physical safe-area verification.
-- Server-stopped check: reload rendered the cached app, kept the renamed five-card deck and exact persistence marker, and completed a five-second round. Mac network hint still said Online because the internet connection itself remained active; the static server was confirmed stopped.
-- No browser error/warning logs were present at that offline-round check.
+- Strict TypeScript build and all 18 tests pass. Tests cover import/Unicode/duplicates, lookup/shuffle/round rules, cached audio ranges, version guards, invalid backup rejection, add/replace restores, legacy POC and native backup formats, 2,000-card roundtrip and accelerating cue timing.
+- Upgraded an existing cached prototype without clearing storage. The original five cards, duplicate Beyoncé, -5 degrees, order and saved duration remained.
+- Exported actual backup JSON through the copy-text fallback, selected that file through the file picker, previewed it, added copies, replaced the library, recovered the previous library through its restore point, and reloaded to confirm committed IndexedDB data.
+- Created a test deck, bulk imported, edited a card, renamed the deck and added another card. Lookup and Got It/Pass/pause/resume worked. Manual ending says Round ended; natural expiry says Time’s up.
+- Final UI checked at 430 × 932 and 932 × 430. Landscape play has a large centered card, two answer buttons and pause/end controls, with no header clutter. Physical safe areas remain an iPhone check.
+- Stopped the local static server, reloaded the latest cached UI and completed a five-second round. Existing decks remained usable offline.
+- Browser share was unavailable in the embedded Mac browser. The download fallback was requested but no download event could be verified there. The generated JSON and actual file-import/restore path were verified; iPhone Save to Files needs testing.
 
-## Required iPhone trial — not yet verified
+## Cole’s original iPhone trial (version 0.1)
 
-Device: iPhone 15 Pro Max / iOS 27.0
-URL: https://colebur.github.io/deckforge-pwa-poc/
-Date: __________________________
-Installed from Home Screen: __________________________
+Device: iPhone 15 Pro Max, iOS 27.0.
 
-| Criterion | Pass / Fail / Unsupported | Notes |
-| --- | --- | --- |
-| Launches standalone from Home Screen without Safari chrome | Pending | |
-| Initial offline cache says Ready | Pending | |
-| Airplane Mode + Wi-Fi off, dismiss app, cold launch succeeds | Pending | |
-| Original deck/card order, duplicates, edits and test marker survive reopening | Pending | |
-| New offline edits survive a second reopening | Pending | |
-| Duration survives reopening | Pending | |
-| CRUD/bulk paste/lookup feel comfortable on the actual screen | Pending | |
-| Got It / Pass / pause / expiry give correct round results | Pending | |
-| Portrait and both landscape directions are readable/tappable | Pending | |
-| Sensor permission allowed and actual usable readings arrive | Pending | |
-| Sensor values respond smoothly both landscape directions / up and down | Pending | |
-| No repeated multi-second sensor gaps during 30 seconds of foreground use | Pending | |
-| Stop/restart, app return, cold reopen, offline sensors work | Pending | |
-| Tap-started tone audible, including offline | Pending | |
-| Loop audible through multiple cycles and during active round | Pending | |
-| Pause/Resume and expiry sound behave acceptably | Pending | |
-| Background/app-switch/lock audio continues or can resume acceptably | Pending | |
-| Custom vibration supported and actually felt | Pending | Optional; unsupported does not block core games |
-| Storage persistence request result recorded | Pending | Best-effort storage requires a backup plan |
-| Decks survive next-day reopening and phone restart | Pending | |
+Cole reported that decks/cards survived closing and reopening, online/offline operation worked, Lookup and Catchphrase controls worked, landscape worked in both modes, sensors produced readings, loop audio played, and audio/sensors worked offline. These are user-reported physical-device results. They do not establish multi-day durability, calibration quality, background audio or custom haptics.
 
-## Decision rule
+## Version 0.2 iPhone checklist
 
-Proceed to discussing a migration only if standalone/offline launch, local persistence, deck editing, lookup, timed gameplay, foreground audio, and raw sensor access pass on the iPhone. If sensor support fails, do not commit to the future Heads Up experience yet. If reliable locked-screen/background audio is essential and fails, keep native or reconsider that requirement. Vibration may be an accepted compromise. Repeat the storage checks over more than one day; one successful reload is insufficient evidence of long-term reliability.
+- [ ] Settings shows version 0.2.0 after updating; previous decks are intact.
+- [ ] Export Backup → Save to Files creates a readable JSON file outside app storage.
+- [ ] Choose Backup File → Add deck copies preserves originals and restores exact card order.
+- [ ] Replace library → Review Restore Point recovers the prior library (use disposable test decks).
+- [ ] Timer begins with widely spaced soft beeps, accelerates smoothly and ends with one buzzer. Pause stops cues; Resume works. Repeat offline.
+- [ ] Simpler screens and play controls feel comfortable in portrait and both landscape directions.
+- [ ] Offline cold launch and edits still survive reopening, next-day use and a phone restart.
+- [ ] Record Settings storage protection result; keep an exported backup regardless.
 
-The POC does not prove finished tilt recognition, multi-team gameplay, full backup restore, all sound combinations, or upgrade/data-migration behavior. Those remain future milestones, not silently included migration work.
+## Remaining decision limits
 
-## Pause checkpoint
+No full migration approved or performed. Native DeckForge remains untouched in its own repository. Teams, random durations and completed tilt gameplay are not part of this milestone. Background/locked-screen audio, custom haptics, long-term storage and physical 0.2 sharing/cues remain unverified. Keep native available while evaluating these compromises.
 
-Cole paused before leaving for work. The final source compiles and all seven rule tests pass. The updated shared audio-cue implementation and GitHub-style subfolder server still need their final browser checks. No temporary HTTPS tunnel or GitHub site was created; iPhone installation and physical tests remain pending. Local test servers were stopped for the pause. Resume with `./scripts/dev.sh`.
-
-## Resumed verification
-
-- Strict compilation and all nine tests passed on resume.
-- The latest app loaded under a GitHub-style `/deckforge-pwa-poc/` path and reloaded after stopping that test server. Its saved deck and five-second duration persisted.
-- The updated cue player accepted tone/loop requests and the five-second round completed without browser errors. Physical audibility and iOS interruptions remain unverified.
-- Added explicit media byte-range responses for Safari and a Check Audio Cache button. With the local server stopped, the latest module service worker served the cached app and returned HTTP 206 with exactly two requested audio bytes.
-- Cole authorized creating a separate public GitHub Pages repository, then signed into GitHub. Repository `Colebur/deckforge-pwa-poc` was created through the browser. Publication is being configured.
-
-## GitHub Pages publication — September 30, 2026
-
-- Separate public repository: https://github.com/Colebur/deckforge-pwa-poc
-- First automated build/test/deployment passed: https://github.com/Colebur/deckforge-pwa-poc/actions/runs/36762243873
-- All uploaded source, scripts, tests, workflow and public assets matched the local files byte for byte.
-- Live HTTPS app: https://colebur.github.io/deckforge-pwa-poc/
-- Live Mac browser showed Ready · cached for offline use; saved marker survived reload; Check Audio Cache returned HTTP 206 with exactly two bytes. No warning/error browser logs were reported. This live check was online; actual disconnected cold launch was tested locally as recorded above and remains pending on iPhone.
-- GitHub reported a non-blocking deprecation warning for older official action runtimes and an upcoming Ubuntu runner change. The deployment succeeded.
-- Private Mac paths/email were removed from public documentation before upload. Native project remains untouched.
-- iPhone Home Screen installation, actual audio, motion, background behavior, and multi-day storage checks remain pending. No migration approved or performed.
+Live trial: https://colebur.github.io/deckforge-pwa-poc/
+Source: https://github.com/Colebur/deckforge-pwa-poc
