@@ -1,0 +1,12 @@
+{
+  "name": "deckforge-pwa-proof-of-concept",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc && node scripts/build.mjs",
+    "start": "node scripts/serve.mjs",
+    "test": "npm run build && node --test tests/model.test.mjs"
+  },
+  "devDependencies": { "typescript": "5.9.3" }
+}
