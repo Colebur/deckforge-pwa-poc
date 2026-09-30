@@ -17,3 +17,8 @@ body.playing .active-game>.prompt{grid-row:2;align-self:center;flex:none;padding
 .active-game .tilt-hint{margin:0 0 6px;font-size:12px}
 body.playing .tilt-game>.prompt{font-size:clamp(38px,10vw,78px)}
 @media(orientation:landscape){body.playing .active-game{min-height:calc(100dvh - max(10px,env(safe-area-inset-top)) - max(10px,env(safe-area-inset-bottom)))}body.playing .tilt-game>.prompt{font-size:clamp(48px,10vw,96px)}}
+
+/* Use the native system face with quieter iOS-style home titles. */
+.home-screen .menu-row strong{font-size:17px;font-weight:600;letter-spacing:-.2px;line-height:1.3}
+.home-screen .menu-row small{font-size:14px}
+.home-screen header h1{font-size:28px;font-weight:600;letter-spacing:-.5px}
