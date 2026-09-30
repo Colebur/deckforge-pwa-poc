@@ -1,0 +1,67 @@
+export interface Card { id: string; text: string }
+export interface Deck { id: string; name: string; cards: Card[] }
+export interface Library { decks: Deck[]; duration: number; probe: string | null }
+export const emptyLibrary = (): Library => ({decks: [], duration: 90, probe: null});
+export function importLines(input: string): string[] {
+  return input.split(/\r\n|\n|\r/).map(line => line.trim()
+    .replace(/^(?:\d{1,6}[.)](?:\s+|$)|[-*](?:\s+|$)|[•‣▪]\s*)/, '').trim()).filter(Boolean);
+}
+export function shuffled<T>(items: readonly T[], random = Math.random): T[] {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j]!, copy[i]!];
+  }
+  return copy;
+}
+export function lookup(cards: readonly Card[], number: string): number {
+  const input = number.trim();
+  if (!/^\d+$/.test(input)) throw new Error('Enter a whole item number.');
+  const index = Number(input) - 1;
+  if (!Number.isSafeInteger(index) || index < 0 || index >= cards.length)
+    throw new Error(`Choose a number from 1 to ${cards.length}.`);
+  return index;
+}
+export class Round {
+  phase: 'running' | 'paused' | 'ended' = 'running';
+  score = 0;
+  passed = 0;
+  remaining: number;
+  deadline: number;
+  current: Card;
+  private bag: Card[] = [];
+  private lastId?: string;
+  private readonly cards: Card[];
+  constructor(cards: readonly Card[], duration: number, now: number) {
+    if (!cards.length) throw new Error('Add cards before starting a round.');
+    if (!Number.isFinite(duration) || duration < 5 || duration > 300) throw new Error('Choose 5–300 seconds.');
+    this.cards = cards.map(card => ({...card}));
+    this.remaining = duration * 1000;
+    this.deadline = now + this.remaining;
+    this.current = this.draw();
+  }
+  tick(now: number): void {
+    if (this.phase !== 'running') return;
+    this.remaining = Math.max(0, this.deadline - now);
+    if (this.remaining === 0) this.phase = 'ended';
+  }
+  answer(correct: boolean, now: number): boolean {
+    this.tick(now);
+    if (this.phase !== 'running') return false;
+    if (correct) this.score++; else this.passed++;
+    this.current = this.draw();
+    return true;
+  }
+  pause(now: number): void { this.tick(now); if(this.phase==='running') this.phase='paused'; }
+  resume(now: number): void { if(this.phase==='paused') { this.deadline=now+this.remaining; this.phase='running'; } }
+  private draw(): Card {
+    if (!this.bag.length) {
+      this.bag = shuffled(this.cards);
+      if (this.bag.length > 1 && this.bag.at(-1)!.id === this.lastId)
+        [this.bag[0], this.bag[this.bag.length-1]] = [this.bag.at(-1)!, this.bag[0]!];
+    }
+    const next = this.bag.pop()!;
+    this.lastId = next.id;
+    return next;
+  }
+}
