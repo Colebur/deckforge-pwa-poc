@@ -1,7 +1,7 @@
 export interface Card { id: string; text: string }
 export interface Deck { id: string; name: string; cards: Card[] }
-export interface Library { decks: Deck[]; duration: number; probe: string | null }
-export const emptyLibrary = (): Library => ({decks: [], duration: 90, probe: null});
+export interface Library { decks: Deck[]; duration: number; probe: string | null; teams?: string[]; headbandsDuration?: number }
+export const emptyLibrary = (): Library => ({decks: [], duration: 0, probe: null});
 export function importLines(input: string): string[] {
   return input.split(/\r\n|\n|\r/).map(line => line.trim()
     .replace(/^(?:\d{1,6}[.)](?:\s+|$)|[-*](?:\s+|$)|[•‣▪]\s*)/, '').trim()).filter(Boolean);
@@ -54,6 +54,10 @@ export class Round {
   }
   pause(now: number): void { this.tick(now); if(this.phase==='running') this.phase='paused'; }
   resume(now: number): void { if(this.phase==='paused') { this.deadline=now+this.remaining; this.phase='running'; } }
+  restart(duration: number, now: number): void {
+    if(this.phase!=='ended') throw new Error('End the round first.');
+    this.remaining=duration*1000;this.deadline=now+this.remaining;this.phase='running';this.score=0;this.passed=0;this.current=this.draw();
+  }
   private draw(): Card {
     if (!this.bag.length) {
       this.bag = shuffled(this.cards);

@@ -1,4 +1,5 @@
 import { type Library } from './model.js';
+import {teamNames, TIMER_CHOICES} from './games.js';
 
 export class NewerFormatError extends Error {}
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -6,7 +7,7 @@ const nonblank = (value: unknown): value is string => typeof value === 'string' 
 export const MAX_BACKUP_BYTES = 20 * 1024 * 1024;
 export function validateLibrary(value: unknown): Library {
   if (!record(value) || !Array.isArray(value.decks) || typeof value.duration !== 'number' ||
-      !Number.isFinite(value.duration) || value.duration < 5 || value.duration > 300 ||
+      !Number.isFinite(value.duration) || (value.duration !== 0 && value.duration < 5) || value.duration > 300 ||
       !(value.probe === null || typeof value.probe === 'string')) throw new Error('Invalid deck library. Nothing was changed.');
   const deckIDs = new Set<string>();
   const decks = value.decks.map(entry => {
@@ -22,22 +23,25 @@ export function validateLibrary(value: unknown): Library {
     });
     return {id: entry.id, name: entry.name, cards};
   });
-  return {decks, duration: value.duration, probe: value.probe};
+  const result: Library={decks, duration: value.duration, probe: value.probe};
+  if(value.teams!==undefined){if(!Array.isArray(value.teams)||!value.teams.every(v=>typeof v==='string'))throw new Error('Invalid team settings.');result.teams=teamNames(value.teams);}
+  if(value.headbandsDuration!==undefined){if(typeof value.headbandsDuration!=='number'||!TIMER_CHOICES.includes(value.headbandsDuration))throw new Error('Invalid Headbands timer.');result.headbandsDuration=value.headbandsDuration;}
+  return result;
 }
 // Keep the original database/store names. Old POC libraries upgrade without clearing data.
 export function decodeState(value: unknown): Library {
   if (record(value) && value.format === 'deckforge-pwa-state') {
-    if (value.version !== 1) throw new NewerFormatError('This library needs a newer DeckForge update. Your saved data was not changed.');
+    if (value.version !== 1 && value.version !== 2) throw new NewerFormatError('This library needs a newer DeckForge update. Your saved data was not changed.');
     return validateLibrary(value.library);
   }
   return validateLibrary(value);
 }
 export function encodeState(library: Library): object {
-  return {format: 'deckforge-pwa-state', version: 1, library: validateLibrary(library)};
+  return {format: 'deckforge-pwa-state', version: 2, library: validateLibrary(library)};
 }
 export interface BackupPreview { library: Library; source: 'DeckForge PWA' | 'Original PWA backup' | 'Native DeckForge backup' }
 export function exportBackup(library: Library, now = new Date()): string {
-  return JSON.stringify({format: 'deckforge-pwa-backup', version: 1, exportedAt: now.toISOString(), library: validateLibrary(library)}, null, 2);
+  return JSON.stringify({format: 'deckforge-pwa-backup', version: 2, exportedAt: now.toISOString(), library: validateLibrary(library)}, null, 2);
 }
 export function parseBackup(text: string): BackupPreview {
   if (new TextEncoder().encode(text).byteLength > MAX_BACKUP_BYTES) throw new Error('Choose a backup smaller than 20 MB.');
@@ -45,7 +49,7 @@ export function parseBackup(text: string): BackupPreview {
   try { value = JSON.parse(text); } catch { throw new Error('This file is not a valid JSON backup. Nothing was changed.'); }
   if (!record(value)) throw new Error('This is not a DeckForge backup.');
   if (value.format === 'deckforge-pwa-backup') {
-    if (value.version !== 1) throw new NewerFormatError('This backup needs a newer DeckForge update. Nothing was changed.');
+    if (value.version !== 1 && value.version !== 2) throw new NewerFormatError('This backup needs a newer DeckForge update. Nothing was changed.');
     return {library: validateLibrary(value.library), source: 'DeckForge PWA'};
   }
   if (value.format === 'deckforge-pwa-poc-v1') return {library: validateLibrary(value), source: 'Original PWA backup'};
