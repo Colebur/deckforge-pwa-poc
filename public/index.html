@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#142524">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Forge POC">
+  <meta name="color-scheme" content="light dark">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icon-180.png">
+  <link rel="icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./style.css">
+  <title>DeckForge · PWA Lab</title>
+</head>
+<body>
+  <header><div><p class="eyebrow">THE WEB APP EXPERIMENT</p><h1>DeckForge <span>Lab</span></h1></div><span class="badge">POC</span></header>
+  <nav aria-label="Main"><button data-route="library">Decks</button><button data-route="lookup">Lookup</button><button data-route="catchphrase">Catchphrase</button><button data-route="lab">Test Lab</button></nav>
+  <p id="notice" role="status" aria-live="polite"></p>
+  <main id="app"><p>Opening your local deck library…</p></main>
+  <footer><span id="connection">Checking connection…</span><span id="offline-status">Offline setup pending</span></footer>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
