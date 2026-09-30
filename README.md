@@ -28,7 +28,7 @@ cd /path/to/DeckForge-PWA
 sh scripts/dev.sh
 ```
 
-The helper finds the Node runtime already bundled with Codex on this Mac, installs the one build dependency if needed, compiles TypeScript, runs the 30 rule/media/backup/game/audio tests, and serves the built app. First dependency installation requires internet. Subsequent builds need no internet if the dependency is already present.
+The helper finds the Node runtime already bundled with Codex on this Mac, installs the one build dependency if needed, compiles TypeScript, runs the 32 rule/media/backup/game/audio tests, and serves the built app. First dependency installation requires internet. Subsequent builds need no internet if the dependency is already present.
 
 3. Open **http://localhost:4173/** in your Mac browser. Keep Terminal open. Stop with Control–C.
 
@@ -70,7 +70,7 @@ A ready-to-use workflow lives in `.github/workflows/pages.yml`. It builds/tests 
 
 The separate public repository has been created and its source uploaded. Pages uses **GitHub Actions**, with HTTPS enforced. The first automated build/test/deployment succeeded on September 30, 2026. Open **https://colebur.github.io/deckforge-pwa-poc/** in iPhone Safari, including the trailing slash. Your Mac can be asleep or switched off; GitHub serves the app files.
 
-Future source commits to `main` trigger the workflow automatically. It compiles TypeScript, runs all 30 tests, and publishes only `dist/`. Inspect **Actions → Build, test and publish PWA** for the green success result. The local POC repository preserves the original development checkpoints; the public repository currently has the browser-upload commit history. These are separate histories, so do not force-push one over the other. No Git command-line credentials were configured during browser publication.
+Future source commits to `main` trigger the workflow automatically. It compiles TypeScript, runs all 32 tests, and publishes only `dist/`. Inspect **Actions → Build, test and publish PWA** for the green success result. The local POC repository preserves the original development checkpoints; the public repository currently has the browser-upload commit history. These are separate histories, so do not force-push one over the other. No Git command-line credentials were configured during browser publication.
 
 The live app was checked for HTTPS, offline-cache readiness, a saved marker surviving reload, successful two-byte audio range responses, and no browser warnings/errors. Physical iPhone results remain pending. Do not move the live URL later without planning a deck export/restore path; browser data is scoped to its website origin, and multiple PWAs on the same origin require careful storage namespacing before wider distribution.
 
@@ -159,7 +159,7 @@ Backups → Export Backup offers the iPhone share sheet when available; choose S
 
 Versioned backups validate before writing, retain duplicates and exact card order, and support original POC exports. Native DeckForge JSON backup files can also be read as copies; this never opens or changes the native app. Files are limited to 20 MB. Unknown future data versions stop with an error rather than resetting the library. Existing database name, store and keys are preserved across this update.
 
-Settings shows storage protection and installed version 0.3.2. Protection is best effort; exported files remain essential. To update, open online, tap Check for Update, wait for Update ready, close every window/tab for this PWA, then reopen. Do not delete the Home Screen app or clear website data to update.
+Settings shows storage protection and installed version 0.4.0. Protection is best effort; exported files remain essential. To update, open online, tap Check for Update, wait for Update ready, close every window/tab for this PWA, then reopen. Do not delete the Home Screen app or clear website data to update.
 
 `src/backup.ts` validates and copies backup data; `src/cues.ts` schedules the native timer rhythm; `tests/backup.test.mjs` covers restore formats, safety, 2,000 cards and cue timing.
 
@@ -186,3 +186,7 @@ The answer threshold is 25° from the calibrated position (previously 35°), wit
 ## Version 0.3.2 — centered game prompts
 
 Active game prompts sit in the center of the play area, with the main answers and smaller Pause/End buttons together at the bottom. Tilt-enabled Headbands hides Correct/Pass and enlarges the prompt. Switching off Tilt controls or choosing Use Buttons during calibration restores both manual answers. Calibration and round results keep their existing layouts.
+
+## Version 0.4.0 — Prompt Picker
+
+Choose one non-empty deck or All Decks, then draw a prompt for charades, Pictionary or 20 Questions. Draw Again chooses a fresh random card, Decks returns to selection, and Home exits. Every card position across all decks has equal probability; bigger decks contribute proportionally more cards. Duplicate text remains separate cards, and independent draws may repeat. The source deck is shown above the large centered word. Works offline with existing local decks and backups; no timer, scoring or storage-format change.
