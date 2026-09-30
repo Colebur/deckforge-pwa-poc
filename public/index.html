@@ -15,8 +15,7 @@
   <title>DeckForge · PWA Lab</title>
 </head>
 <body>
-  <header><div><p class="eyebrow">THE WEB APP EXPERIMENT</p><h1>DeckForge <span>Lab</span></h1></div><span class="badge">POC</span></header>
-  <nav aria-label="Main"><button data-route="library">Decks</button><button data-route="lookup">Lookup</button><button data-route="catchphrase">Catchphrase</button><button data-route="lab">Test Lab</button></nav>
+  <header><button id="home-button" data-action="home" aria-label="Back to Home" class="quiet">‹</button><h1 id="page-title">DeckForge</h1><button id="settings-button" data-action="settings" aria-label="Settings" class="quiet">⚙︎</button></header>
   <p id="notice" role="status" aria-live="polite"></p>
   <main id="app"><p>Opening your local deck library…</p></main>
   <footer><span id="connection">Checking connection…</span><span id="offline-status">Offline setup pending</span></footer>
