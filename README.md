@@ -9,12 +9,14 @@ This folder is its own Git repository, independent of the native app. The separa
 - Create, rename and delete decks; add, edit and delete cards.
 - Bulk paste: every non-empty line becomes a card. Simple `1. `, `2) `, `- `, `* ` and `•` prefixes are removed. Duplicates stay; negative numbers and decimals are preserved.
 - Numbered Lookup: fixed deck-order numbers, Previous / Next / Random. Repeated random picks are allowed; Previous/Next stop at the ends.
-- Minimal Catchphrase: saved 5/30/60/90/120/180/300-second duration, randomized cards, Got It +1, Pass +0, pause/resume, final score. This is an individual round score experiment, not the native game's team-point rules. The countdown is hidden unless you choose Show countdown for testing. All cards are used before reshuffling; a refill avoids repeating the immediately preceding card if possible.
+- Catchphrase: saved 2–8 named teams, Random (30–90 seconds) or fixed 15-second increments, Next Card, pause/resume, one team point awarded after expiry and a match scoreboard.
+- Headbands: stable sideways calibration, tilt down Correct / up Pass, manual controls, native feedback clips and results. Each card is used once; finishing the deck ends the round.
+
 - IndexedDB local persistence. Writes report success only after the transaction completes. Editor card lists show 50 at a time so large decks do not create thousands of screen controls.
 - Manifest, standalone launch, icon, safe areas, dark mode, 48-pixel controls, and an offline service worker. No external fonts, scripts or media are needed at runtime.
 - Settings → Device Tests: real motion/orientation permission requests and live values, vibration feature detection, soft tone, looping audio, background-audio probe, saved persistence marker, persistent-storage request, and versioned JSON backups and validated restore.
 
-Not implemented: Heads Up scoring/tilt calibration, teams, random timer durations, automatic native-deck migration, cloud sync, animations, a background-running game. Catchphrase uses copies of the native beep and buzzer, with the same acceleration curve: roughly two seconds apart initially, speeding toward 0.22 seconds. The arpeggio loop remains only as a diagnostic.
+Not implemented: automatic native-deck migration, cloud sync, animations or a background-running game. Catchphrase uses copies of the native beep and buzzer, with a smooth revised curve: roughly two seconds apart initially, approaching 0.18 seconds in the urgent ending. The arpeggio loop remains only as a diagnostic.
 
 ## 1. Run locally on this Mac
 
@@ -26,7 +28,7 @@ cd /path/to/DeckForge-PWA
 sh scripts/dev.sh
 ```
 
-The helper finds the Node runtime already bundled with Codex on this Mac, installs the one build dependency if needed, compiles TypeScript, runs the 18 rule/media/backup tests, and serves the built app. First dependency installation requires internet. Subsequent builds need no internet if the dependency is already present.
+The helper finds the Node runtime already bundled with Codex on this Mac, installs the one build dependency if needed, compiles TypeScript, runs the 28 rule/media/backup/game/audio tests, and serves the built app. First dependency installation requires internet. Subsequent builds need no internet if the dependency is already present.
 
 3. Open **http://localhost:4173/** in your Mac browser. Keep Terminal open. Stop with Control–C.
 
@@ -68,7 +70,7 @@ A ready-to-use workflow lives in `.github/workflows/pages.yml`. It builds/tests 
 
 The separate public repository has been created and its source uploaded. Pages uses **GitHub Actions**, with HTTPS enforced. The first automated build/test/deployment succeeded on September 30, 2026. Open **https://colebur.github.io/deckforge-pwa-poc/** in iPhone Safari, including the trailing slash. Your Mac can be asleep or switched off; GitHub serves the app files.
 
-Future source commits to `main` trigger the workflow automatically. It compiles TypeScript, runs all 18 tests, and publishes only `dist/`. Inspect **Actions → Build, test and publish PWA** for the green success result. The local POC repository preserves the original development checkpoints; the public repository currently has the browser-upload commit history. These are separate histories, so do not force-push one over the other. No Git command-line credentials were configured during browser publication.
+Future source commits to `main` trigger the workflow automatically. It compiles TypeScript, runs all 28 tests, and publishes only `dist/`. Inspect **Actions → Build, test and publish PWA** for the green success result. The local POC repository preserves the original development checkpoints; the public repository currently has the browser-upload commit history. These are separate histories, so do not force-push one over the other. No Git command-line credentials were configured during browser publication.
 
 The live app was checked for HTTPS, offline-cache readiness, a saved marker surviving reload, successful two-byte audio range responses, and no browser warnings/errors. Physical iPhone results remain pending. Do not move the live URL later without planning a deck export/restore path; browser data is scoped to its website origin, and multiple PWAs on the same origin require careful storage namespacing before wider distribution.
 
@@ -157,6 +159,22 @@ Backups → Export Backup offers the iPhone share sheet when available; choose S
 
 Versioned backups validate before writing, retain duplicates and exact card order, and support original POC exports. Native DeckForge JSON backup files can also be read as copies; this never opens or changes the native app. Files are limited to 20 MB. Unknown future data versions stop with an error rather than resetting the library. Existing database name, store and keys are preserved across this update.
 
-Settings shows storage protection and installed version 0.2.0. Protection is best effort; exported files remain essential. To update, open online, tap Check for Update, wait for Update ready, close every window/tab for this PWA, then reopen. Do not delete the Home Screen app or clear website data to update.
+Settings shows storage protection and installed version 0.3.0. Protection is best effort; exported files remain essential. To update, open online, tap Check for Update, wait for Update ready, close every window/tab for this PWA, then reopen. Do not delete the Home Screen app or clear website data to update.
 
 `src/backup.ts` validates and copies backup data; `src/cues.ts` schedules the native timer rhythm; `tests/backup.test.mjs` covers restore formats, safety, 2,000 cards and cue timing.
+
+## Version 0.3 — native game rules
+
+Catchphrase now uses 2–8 saved, unique team names. Random (30–90 seconds) is the initial setting; fixed choices run from 15 to 300 seconds in 15-second steps. Random is chosen afresh every round. Give clues, tap Next Card and pass between teams. After expiry, choose one team for one point or No point. A round cannot score twice or start again before that decision. The shuffled deck continues across rounds. Scores last for the current game; team names and timer preferences survive reopening. Original POC libraries keep their decks, IDs, order and marker.
+
+Game audio uses a tap-unlocked Web Audio clock, rather than repeated HTML play requests from UI ticks. The smooth curve begins near two seconds, reaches rapid roughly 0.18-second beeps near the end, and schedules a firmer two-tone square-wave buzzer at the exact audio deadline. Pause cancels scheduled cues, Resume replans the remaining time, and an interruption pauses play. The diagnostic loop remains in Device Tests only. The loop is optional and not part of the countdown. Foreground iPhone audibility and perceived urgency still need physical testing.
+
+Headbands uses its own saved timer (60 seconds initially, with Random and the same fixed choices). With Tilt controls enabled, Start requests motion permission directly from the tap, then waits for a stable sideways forehead hold before starting the clock. Tilt down for Correct, up for Pass, then return to neutral. It uses both landscape directions, stable calibration, a held-angle threshold and a return-to-neutral delay to avoid repeated answers. Browser acceleration is converted to the native gravity convention. Shaking, stale samples, upright positioning or changing landscape direction requires recalibration. Pause/resume requires a fresh hold. Use Buttons is always available when motion is unavailable; switching off Tilt controls starts directly.
+
+Each Headbands card appears once per round; finishing the deck ends the round. Results include Correct, Passed and Unanswered. Accepted answers play copies of the native cheerful correct/pass clips. The last accepted answer keeps its feedback even when the deck finishes. Late answers cannot score or play a correct cue. The app requests screen wake lock when available; if unavailable, the phone's Auto-Lock setting still applies. Leaving the app pauses play and stops motion.
+
+Backups/state are now version 2, including teams and the separate Headbands timer. Version 1 exports and existing storage remain readable. Older app versions should be updated before using new-format data. Do not clear website data to update.
+
+Important files: `src/games.ts` contains team/timer/result rules; `src/tilt.ts` contains tilt detection; `src/game-audio.ts` schedules sound; `src/app.ts` connects the screens; `tests/games.test.mjs` and `tests/audio.test.mjs` check rules, sensor sequences and output scheduling. No native file is edited.
+
+References: [Web Audio resume](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/resume), [audio interruption states](https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/state), [device motion coordinate conventions](https://www.w3.org/TR/orientation-event/).
