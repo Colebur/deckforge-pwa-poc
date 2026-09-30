@@ -27,7 +27,7 @@ test('both landscape directions calibrate, tilt down correct/up pass, hold and n
  for(const sign of [1,-1]){const d=new TiltDetector();assert.deepEqual(hold(d,0,0,0.8,sign),['ready']);assert.deepEqual(hold(d,45,0.8,0.5,sign),['correct']);assert.deepEqual(hold(d,45,1.3,0.4,sign),[]);hold(d,0,1.7,0.4,sign);assert.deepEqual(hold(d,-45,2.1,0.4,sign),['pass']);}
 });
 test('manual answers, brief tilts, invalid readings, sensor gaps and direction changes cannot double-score',()=>{
- const d=new TiltDetector();hold(d,0,0,0.8);assert.deepEqual(hold(d,45,0.8,0.08),[]);hold(d,0,0.88,0.4);d.disarm();assert.deepEqual(hold(d,45,1.28,0.3),[]);
+ const d=new TiltDetector();hold(d,0,0,0.8);assert.deepEqual(hold(d,45,0.8,0.06),[]);hold(d,0,0.86,0.4);d.disarm();assert.deepEqual(hold(d,45,1.28,0.3),[]);
  d.update(1,0,0,3);assert.equal(d.calibrated,false);hold(d,0,3.02,0.8);d.update(-1,0,0,3.82);assert.equal(d.calibrated,false);assert.equal(d.update(NaN,0,0,4),null);assert.equal(d.calibrated,false);
 });
 test('web acceleration converts into native gravity, including linear acceleration subtraction',()=>{
@@ -42,4 +42,23 @@ test('audio-clock plan accelerates continuously, final chunk is rapid, ends prec
 test('v1 data remains intact; v2 backups retain saved teams, Random and Headbands timer',()=>{
  const old={decks:[{id:'d',name:'Original',cards}],duration:90,probe:'keep'};assert.deepEqual(decodeState({format:'deckforge-pwa-state',version:1,library:old}),old);
  const updated={...old,duration:0,teams:['A','B','C'],headbandsDuration:75};assert.deepEqual(parseBackup(exportBackup(updated)).library,updated);
+});
+
+test('gentle 26-degree tilts register promptly in both landscape directions without repeat scoring',()=>{
+ for(const sign of [1,-1]){
+  const d=new TiltDetector();hold(d,0,0,0.8,sign);
+  assert.deepEqual(hold(d,20,0.8,0.3,sign),[]);
+  assert.deepEqual(hold(d,26,1.1,0.12,sign),['correct']);
+  assert.deepEqual(hold(d,26,1.22,0.3,sign),[]);
+  hold(d,0,1.52,0.22,sign);
+  assert.deepEqual(hold(d,-26,1.74,0.12,sign),['pass']);
+  assert.deepEqual(hold(d,-26,1.86,0.3,sign),[]);
+ }
+});
+test('crossing the opposite tilt direction without returning to neutral cannot answer twice',()=>{
+ const d=new TiltDetector();hold(d,0,0,0.8);
+ assert.deepEqual(hold(d,26,0.8,0.14),['correct']);
+ assert.deepEqual(hold(d,-26,0.94,0.3),[]);
+ hold(d,0,1.24,0.1);assert.deepEqual(hold(d,-26,1.34,0.2),[]);
+ hold(d,0,1.54,0.24);assert.deepEqual(hold(d,-26,1.78,0.14),['pass']);
 });
