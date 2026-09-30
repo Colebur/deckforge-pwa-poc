@@ -1,5 +1,5 @@
 export type TiltEvent='ready'|'correct'|'pass';
-// Same stable-hold/return-to-neutral rules as the native detector. Times are seconds.
+// Gentle deliberate gestures; return to neutral prevents repeated answers. Times are seconds.
 export class TiltDetector {
   calibrated=false;
   private baseline=0;
@@ -27,12 +27,12 @@ export class TiltDetector {
     }
     if(Math.abs(y)>=0.5 || x*this.sign<0){this.reset();return null;}
     const delta=angle-this.baseline;
-    if(Math.abs(delta)<=12){this.pending=undefined;this.pendingSince=undefined;this.neutralSince??=time;if(time-this.neutralSince>=0.25)this.armed=true;return null;}
+    if(Math.abs(delta)<=12){this.pending=undefined;this.pendingSince=undefined;this.neutralSince??=time;if(time-this.neutralSince>=0.18)this.armed=true;return null;}
     this.neutralSince=undefined;if(!this.armed)return null;
-    const event=delta>=35?'correct':delta<=-35?'pass':null;
+    const event=delta>=25?'correct':delta<=-25?'pass':null;
     if(!event){this.pending=undefined;this.pendingSince=undefined;return null;}
     if(this.pending!==event){this.pending=event;this.pendingSince=time;}
-    else if(time-this.pendingSince!>=0.12){this.disarm();return event;}
+    else if(time-this.pendingSince!>=0.08){this.disarm();return event;}
     return null;
   }
 }
