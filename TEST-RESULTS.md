@@ -43,3 +43,9 @@ Source: https://github.com/Colebur/deckforge-pwa-poc
 - Physical motion was not simulated through the browser. Real iPhone tilt calibration/direction, sound smoothness/urgency and final buzzer audibility remain the user's next tests. Synthetic detector sequences and audio output schedules are automated checks, not physical-device results.
 
 New iPhone checklist: Settings version 0.3.0; saved deck order unchanged; named teams/settings survive reopening; Random rerolls every round without showing its duration; award exactly one team point; listen through a full round/pause/resume/offline; Headbands sideways hold starts the timer, down scores Correct, up Pass, held tilt scores only once, return-to-neutral rearms, and both landscape directions work; pause/resume recalibrates; results and feedback match answers. Use Buttons is a working fallback if motion is denied or unavailable.
+
+## 0.3.1 gentle tilt adjustment
+
+Tilt threshold reduced from 35° to 25°; deliberate hold from 120 ms to 80 ms; neutral rearm from 250 ms to 180 ms. Stable calibration, 12° neutral zone, shake rejection, sensor-gap reset, and one-answer-per-gesture protection retained. Added both-landscape gentle-gesture and rapid-rearm tests, plus opposite-direction/brief-neutral duplicate prevention. Physical iPhone feel remains for Cole to assess.
+
+Strict build and all 30 automated checks pass for 0.3.1. Cole confirmed 0.3 teams, upgraded timer and tilt controls work well on iPhone before requesting gentler tilts.
