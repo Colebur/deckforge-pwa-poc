@@ -17,5 +17,5 @@ if [ ! -f node_modules/typescript/bin/tsc ]; then
 fi
 node node_modules/typescript/bin/tsc
 node scripts/build.mjs
-node --test tests/model.test.mjs
+node --test tests/*.test.mjs
 exec node scripts/serve.mjs "$@"
