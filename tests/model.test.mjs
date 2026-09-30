@@ -47,3 +47,19 @@ test('invalid media ranges fail explicitly; full requests stay intact',async()=>
     assert.equal((await mediaResponse(response(),range)).status,416);
   assert.equal((await mediaResponse(response(),null)).status,200);
 });
+
+// Uneven deck sizes expose the bias that picking a random deck first would create.
+test('Prompt Picker weights every card equally across uneven decks and retains source identity',async()=>{
+ const {randomPrompt}=await import('../dist/model.js');
+ const decks=[{id:'empty',name:'Empty',cards:[]},{id:'small',name:'Small',cards:[{id:'s',text:'Duplicate'}]},{id:'big',name:'Big',cards:[{id:'b1',text:'Duplicate'},{id:'b2',text:'Two'},{id:'b3',text:'Three'}]}];
+ const before=structuredClone(decks);
+ const picks=Array.from({length:4},(_,i)=>randomPrompt(decks,null,()=>(i+0.5)/4));
+ assert.deepEqual(picks.map(p=>[p.deck.id,p.card.id]),[['small','s'],['big','b1'],['big','b2'],['big','b3']]);
+ assert.equal(randomPrompt(decks,null,()=>0).card.id,'s');assert.equal(randomPrompt(decks,null,()=>0.999999).card.id,'b3');assert.deepEqual(decks,before);
+});
+test('Prompt Picker restricts a single deck, safely handles empty/deleted decks and reaches large-deck endpoints',async()=>{
+ const {randomPrompt}=await import('../dist/model.js');
+ const decks=[{id:'empty',name:'Empty',cards:[]},{id:'large',name:'Large',cards:Array.from({length:2000},(_,i)=>({id:String(i),text:String(i)}))}];
+ assert.equal(randomPrompt(decks,'large',()=>0).card.id,'0');assert.equal(randomPrompt(decks,'large',()=>0.999999).card.id,'1999');
+ assert.equal(randomPrompt(decks,'empty'),undefined);assert.equal(randomPrompt(decks,'deleted'),undefined);assert.equal(randomPrompt([]),undefined);
+});
