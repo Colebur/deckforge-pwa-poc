@@ -49,3 +49,7 @@ New iPhone checklist: Settings version 0.3.0; saved deck order unchanged; named 
 Tilt threshold reduced from 35° to 25°; deliberate hold from 120 ms to 80 ms; neutral rearm from 250 ms to 180 ms. Stable calibration, 12° neutral zone, shake rejection, sensor-gap reset, and one-answer-per-gesture protection retained. Added both-landscape gentle-gesture and rapid-rearm tests, plus opposite-direction/brief-neutral duplicate prevention. Physical iPhone feel remains for Cole to assess.
 
 Strict build and all 30 automated checks pass for 0.3.1. Cole confirmed 0.3 teams, upgraded timer and tilt controls work well on iPhone before requesting gentler tilts.
+
+## 0.3.2 centered game UI
+
+Strict build and 30 existing regression checks pass. Local browser checked Catchphrase Next Card/Pause/Resume, manual Headbands Correct/Pass advancing cards, 430×932 portrait and 932×430 landscape without horizontal overflow. Final tilt-mode renderer preview at 932×430 has prompt center y=215 (screen center), 93.2px type, only Pause/End buttons, and no overflow. The actual renderer was exercised with tilt on/off to confirm hiding/restoring manual answers; the sensor-driven live game is for Cole to verify physically. Final bottom Pause/End targets are at least48×48px and manual answers56px high. Temporary fixture was removed before the final build; nothing added to production diagnostics. Native project untouched. Cole confirmed 0.3.1 gentle tilt feel is exactly what he wanted.

@@ -159,7 +159,7 @@ Backups → Export Backup offers the iPhone share sheet when available; choose S
 
 Versioned backups validate before writing, retain duplicates and exact card order, and support original POC exports. Native DeckForge JSON backup files can also be read as copies; this never opens or changes the native app. Files are limited to 20 MB. Unknown future data versions stop with an error rather than resetting the library. Existing database name, store and keys are preserved across this update.
 
-Settings shows storage protection and installed version 0.3.1. Protection is best effort; exported files remain essential. To update, open online, tap Check for Update, wait for Update ready, close every window/tab for this PWA, then reopen. Do not delete the Home Screen app or clear website data to update.
+Settings shows storage protection and installed version 0.3.2. Protection is best effort; exported files remain essential. To update, open online, tap Check for Update, wait for Update ready, close every window/tab for this PWA, then reopen. Do not delete the Home Screen app or clear website data to update.
 
 `src/backup.ts` validates and copies backup data; `src/cues.ts` schedules the native timer rhythm; `tests/backup.test.mjs` covers restore formats, safety, 2,000 cards and cue timing.
 
@@ -182,3 +182,7 @@ References: [Web Audio resume](https://developer.mozilla.org/en-US/docs/Web/API/
 ## Version 0.3.1 — gentler tilt controls
 
 The answer threshold is 25° from the calibrated position (previously 35°), with an 80 ms deliberate hold (previously 120 ms). Returning to the 12° neutral zone rearms after 180 ms (previously 250 ms). One held tilt still scores once. Cole reports the 0.3 teams, timer and tilt controls work on iPhone; this adjustment needs a new physical trial for feel and accidental answers.
+
+## Version 0.3.2 — centered game prompts
+
+Active game prompts sit in the center of the play area, with the main answers and smaller Pause/End buttons together at the bottom. Tilt-enabled Headbands hides Correct/Pass and enlarges the prompt. Switching off Tilt controls or choosing Use Buttons during calibration restores both manual answers. Calibration and round results keep their existing layouts.
