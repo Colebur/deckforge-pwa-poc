@@ -190,3 +190,12 @@ Active game prompts sit in the center of the play area, with the main answers an
 ## Version 0.4.0 — Prompt Picker
 
 Choose one non-empty deck or All Decks, then draw a prompt for charades, Pictionary or 20 Questions. Draw Again chooses a fresh random card, Decks returns to selection, and Home exits. Every card position across all decks has equal probability; bigger decks contribute proportionally more cards. Duplicate text remains separate cards, and independent draws may repeat. The source deck is shown above the large centered word. Works offline with existing local decks and backups; no timer, scoring or storage-format change.
+
+## Taboo (0.5.0)
+Taboo has a separate collection: Home → Taboo → Manage Taboo Decks. Regular decks and All Decks draws are unchanged. Each Taboo card stores an answer and five forbidden words. Paste one card per line: `Astronaut | Space | NASA | Rocket | Moon | Helmet`. Invalid lines stop the entire import before saving.
+
+Teams take turns. Correct adds 1, Pass adds 0, and Taboo subtracts 1. Scores may be negative. Another player judges forbidden words; there is no microphone monitoring. Cards appear once per round and reshuffle next round. Random and fixed timers, pause, audio and offline play use the existing app behavior. Team scores reset when leaving the game; team names and timer settings remain saved.
+
+Backups now use format version 3 and include both separate collections. Versions 1 and 2 and native exports remain readable. A single-deck export includes only that deck. After installing this update, use this version for new mixed backups.
+
+Check on iPhone: create and reopen a Taboo deck, play in portrait and landscape, confirm Correct/Pass/Taboo scoring, pause/resume, team rotation, final buzzer, and offline operation. Export and restore copies to confirm both collections stay separate.
