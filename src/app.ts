@@ -62,6 +62,7 @@ function picker(): string {
 function render(): void {
   const playing=(['catchphrase','headbands'].includes(route) && (calibrating || (!!round && round.phase!=='ended'))) || (route==='prompts' && !!promptDraw); 
   document.body.classList.toggle('playing',playing);
+  document.body.classList.toggle('home-screen',route==='home');
   document.querySelector<HTMLElement>('#page-title')!.textContent=({home:'DeckForge',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Numbered Lookup',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
   document.querySelector<HTMLButtonElement>('#home-button')!.hidden=route==='home';
   document.querySelector<HTMLButtonElement>('#settings-button')!.hidden=route==='settings' || !!loadFailure;
