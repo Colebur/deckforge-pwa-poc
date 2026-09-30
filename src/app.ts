@@ -79,7 +79,7 @@ function render(): void {
   else renderLab();
 }
 function renderHome(): void {
-  app.innerHTML=`<p class="section-label">PLAY</p><section class="list-panel">${destination('catchphrase','Catchphrase','Give clues. Guess the word. Pass the phone.','◷')}${destination('headbands','Headbands','Hold it at your forehead. Tilt to answer.','▱')}${destination('prompts','Prompt Picker','Random ideas for charades, Pictionary or 20 Questions.','✦')}${destination('lookup','Numbered Lookup / Jenga','Find a card by its number, or pick at random.','#')}</section>
+  app.innerHTML=`<p class="section-label">PLAY</p><section class="list-panel">${destination('catchphrase','Catchphrase','Give clues. Guess the word. Pass the phone.','◷')}${destination('headbands','Headbands','Hold it at your forehead. Tilt to answer.','▱')}${destination('prompts','Prompt Picker','Charades / Pictionary / 20 Questions','✦')}${destination('lookup','Numbered Lookup / Jenga','Find a card by its number, or pick at random.','#')}</section>
     <p class="section-label">YOUR DECKS</p><section class="list-panel">${destination('library','Manage Decks',`${library.decks.length} ${library.decks.length===1?'deck':'decks'} saved on this device`,'▱')}${destination('backups','Backups','Save a copy or restore a backup.','↥')}</section>`;
 }
 function renderLibrary(): void {
