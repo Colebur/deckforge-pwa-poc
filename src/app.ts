@@ -1,19 +1,31 @@
 import { importLines, lookup, Round, emptyLibrary, type Deck, type Library } from './model.js';
 import { load, save, recovery, type Recovery } from './storage.js';
 import { exportBackup, parseBackup, restoreBackup, MAX_BACKUP_BYTES, NewerFormatError, type BackupPreview } from './backup.js';
-import { CountdownCues } from './cues.js';
+import {TeamGame, HeadbandsRound, TIMER_CHOICES, defaultTeams, teamNames, roundSeconds} from './games.js';
+import {TiltDetector} from './tilt.js';
+import {GameAudio} from './game-audio.js';
 import { AudioProbe } from './audio.js';
 import { Sensors } from './sensors.js';
 const app = document.querySelector<HTMLElement>('#app')!;
 const notice = document.querySelector<HTMLElement>('#notice')!;
 const audio = new AudioProbe();
 const sensors = new Sensors();
-const cues = new CountdownCues();
+const gameAudio=new GameAudio();
+const tilt=new TiltDetector();
 let library: Library;
 let route = 'home';
 let selected = '';
 let lookupIndex: number | null = null;
-let round: Round | undefined;
+let round: Round | HeadbandsRound | undefined;
+let match: TeamGame | undefined;
+let draftTeams=defaultTeams();
+let draftDuration=0;
+let headDuration=60;
+let useTilt=true;
+let calibrating=false;
+let preparing=false;
+let gameGeneration=0;
+let wakeLock: WakeLockSentinel | undefined;
 let roundLength = 90000;
 let cardPage = 0;
 let editingCard: string | undefined;
@@ -46,9 +58,9 @@ function picker(): string {
   return `<label for="deck-picker">Deck</label><select id="deck-picker">${playable.map(d=>`<option value="${esc(d.id)}" ${d.id===selected?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`).join('')}</select>`;
 }
 function render(): void {
-  const playing=route==='catchphrase' && !!round && round.phase!=='ended';
+  const playing=['catchphrase','headbands'].includes(route) && (calibrating || (!!round && round.phase!=='ended')); 
   document.body.classList.toggle('playing',playing);
-  document.querySelector<HTMLElement>('#page-title')!.textContent=({home:'DeckForge',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Numbered Lookup',catchphrase:'Catchphrase',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
+  document.querySelector<HTMLElement>('#page-title')!.textContent=({home:'DeckForge',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Numbered Lookup',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
   document.querySelector<HTMLButtonElement>('#home-button')!.hidden=route==='home';
   document.querySelector<HTMLButtonElement>('#settings-button')!.hidden=route==='settings' || !!loadFailure;
   document.querySelector<HTMLElement>('footer')!.hidden=!['settings','lab'].includes(route);
@@ -58,12 +70,13 @@ function render(): void {
   else if(route==='editor') renderEditor();
   else if(route==='lookup') renderLookup();
   else if(route==='catchphrase') renderCatchphrase();
+  else if(route==='headbands') renderHeadbands();
   else if(route==='backups') renderBackups();
   else if(route==='settings') renderSettings();
   else renderLab();
 }
 function renderHome(): void {
-  app.innerHTML=`<p class="section-label">PLAY</p><section class="list-panel">${destination('catchphrase','Catchphrase','Give clues. Guess the word. Pass the phone.','◷')}${destination('lookup','Numbered Lookup / Jenga','Find a card by its number, or pick at random.','#')}</section>
+  app.innerHTML=`<p class="section-label">PLAY</p><section class="list-panel">${destination('catchphrase','Catchphrase','Give clues. Guess the word. Pass the phone.','◷')}${destination('headbands','Headbands','Hold it at your forehead. Tilt to answer.','▱')}${destination('lookup','Numbered Lookup / Jenga','Find a card by its number, or pick at random.','#')}</section>
     <p class="section-label">YOUR DECKS</p><section class="list-panel">${destination('library','Manage Decks',`${library.decks.length} ${library.decks.length===1?'deck':'decks'} saved on this device`,'▱')}${destination('backups','Backups','Save a copy or restore a backup.','↥')}</section>`;
 }
 function renderLibrary(): void {
@@ -90,16 +103,29 @@ function renderLookup(): void {
     <form id="lookup-form" class="number-form"><label for="item-number">Card number · 1–${d.cards.length}</label><div class="row"><input id="item-number" name="number" type="text" inputmode="numeric" pattern="[0-9]+" value="${lookupIndex===null?'':lookupIndex+1}" required><button class="narrow primary">Show</button></div></form>
     <section class="panel"><span class="tag">${lookupIndex===null?'Choose a number':`Card ${lookupIndex+1} of ${d.cards.length}`}</span><div class="prompt">${lookupIndex===null?'Ready when you are':esc(d.cards[lookupIndex]?.text ?? '')}</div><div class="row"><button data-action="lookup-prev" ${lookupIndex===0?'disabled':''}>Previous</button><button data-action="lookup-next" ${lookupIndex===d.cards.length-1?'disabled':''}>Next</button>${button('lookup-random','Random')}</div></section>`:''}`;
 }
+function durationPicker(value:number):string {
+  const choices=[...TIMER_CHOICES];if(!choices.includes(value))choices.push(value);
+  return choices.map(n=>`<option value="${n}" ${n===value?'selected':''}>${n===0?'Random (30–90 seconds)':`${n} seconds`}</option>`).join('');
+}
+function scores():string {
+  return match?`<section class="list-panel scoreboard">${match.teams.map((name,i)=>`<div class="card-row"><span class="card-text">${esc(name)}</span><strong>${match!.scores[i]}</strong></div>`).join('')}</section>`:'';
+}
 function renderCatchphrase(): void {
-  if(!round) {
+  if(!round){
     const choose=picker();
-    const durations=[...new Set([5,30,60,90,120,180,300,library.duration])].sort((a,b)=>a-b);
-    app.innerHTML=`<form id="round-form" class="panel">${choose}${deck()?.cards.length?`<label for="duration">Round length</label><select id="duration" name="duration">${durations.map(s=>`<option value="${s}" ${s===library.duration?'selected':''}>${s} seconds</option>`).join('')}</select><label class="check"><input type="checkbox" id="timer-sound" ${timerSound?'checked':''}> Timer sound</label><p class="muted">Beeps speed up as time runs out. The countdown stays hidden.</p><button class="primary full">Start Round</button>`:''}</form><details class="panel"><summary>How to play</summary><p>Give clues until the word is guessed. Got It earns a point; Pass moves on. Cards shuffle and repeat after the whole deck. Leaving the app pauses the round.</p></details>`;
-    return;
+    app.innerHTML=`<form id="round-form" class="panel">${choose}${deck()?.cards.length?`<label for="team-count">Teams</label><select id="team-count">${Array.from({length:7},(_,i)=>`<option value="${i+2}" ${draftTeams.length===i+2?'selected':''}>${i+2} teams</option>`).join('')}</select>${draftTeams.map((name,i)=>`<label for="team-${i}">Team ${i+1} name</label><input id="team-${i}" data-team="${i}" value="${esc(name)}" maxlength="80" required>`).join('')}<label for="duration">Round timer</label><select id="duration" name="duration">${durationPicker(draftDuration)}</select><label class="check"><input type="checkbox" id="timer-sound" ${timerSound?'checked':''}> Timer sound</label><p class="muted">Random picks a fresh duration each round. The countdown stays hidden.</p><button class="primary full" ${preparing?'disabled':''}>${preparing?'Preparing…':'Start Game'}</button>`:''}</form><details class="panel"><summary>How to play</summary><p>Give clues until your team guesses the card. Tap Next Card and pass the phone to the next team. At the buzzer, choose which team gets one point, or choose No point.</p><p>Cards shuffle and repeat after the whole deck. Pause stops the timer and sounds. Leaving the app pauses the round.</p></details>`;return;
   }
-  const ended=round.phase==='ended', paused=round.phase==='paused';
-  app.innerHTML=`<section class="game"><div class="game-status"><span class="tag">${ended?'Round complete':paused?'Paused':''}</span><span id="remaining">${showCountdown?`${Math.ceil(round.remaining/1000)}s`:''}</span></div><div class="prompt" aria-live="polite">${ended?(round.remaining===0?'Time’s up!':'Round ended'):paused?'Paused':esc(round.current.text)}</div>
-    ${ended?`<p class="result">${round.score} correct · ${round.passed} passed</p>${button('new-round','Another Round','primary full')}${button('home','Home','full quiet')}`:paused?`<div class="actions">${button('resume','Resume','primary')}${button('end-round','End Round')}</div>`:`<div class="actions">${button('got-it','Got It','primary')}${button('pass','Pass')}</div><div class="game-bottom">${button('pause','Pause','quiet')}<span class="muted">${round.score} correct</span>${button('end-round','End','quiet')}</div>`}</section>`;
+  const ended=round.phase==='ended',paused=round.phase==='paused';
+  app.innerHTML=`<section class="game"><div class="game-status"><span class="tag">Round ${match?.number ?? 1}</span><span id="remaining">${showCountdown?`${Math.ceil(round.remaining/1000)}s`:''}</span></div><div class="prompt" aria-live="polite">${ended?(round.remaining===0?'Time’s up!':'Round ended'):paused?'Paused':esc(round.current.text)}</div>
+    ${ended?`${scores()}${!match?.scored?`<h2 class="award-title">Who gets the point?</h2><div class="option-list">${match?.teams.map((name,i)=>button('award-'+i,esc(name),'primary')).join('')}${button('award-none','No point')}</div>`:button('next-team-round','Next Round','primary full')}${button('finish-game','Finish Game','full quiet')}`:paused?`<div class="actions">${button('resume','Resume','primary')}${button('end-round','End Round')}</div>`:`${button('next-card','Next Card','primary full next-card')}<div class="game-bottom">${button('pause','Pause','quiet')}<span class="muted">Pass between teams</span>${button('end-round','End','quiet')}</div>`}</section>`;
+}
+function renderHeadbands():void {
+  if(calibrating){
+    app.innerHTML=`<section class="game calibration"><h2>Hold Steady</h2><p>Hold the phone sideways at your forehead, screen facing your friends.</p><div class="prompt">Ready to tilt?</div><p>Tilt down for Correct · Tilt up for Pass</p><p class="muted" id="tilt-status">${preparing?'Preparing audio and motion…':sensors.motionAllowed?'Hold steady. The round starts automatically.':'Motion unavailable or denied. You can use the buttons.'}</p>${button('use-buttons','Use Buttons','primary full')}${button('cancel-headbands','Cancel','full quiet')}</section>`;return;
+  }
+  if(!round){const choose=picker();app.innerHTML=`<form id="headbands-form" class="panel">${choose}${deck()?.cards.length?`<label for="head-duration">Round timer</label><select id="head-duration" name="duration">${durationPicker(headDuration)}</select><label class="check"><input type="checkbox" id="use-tilt" ${useTilt?'checked':''}> Tilt controls</label><label class="check"><input type="checkbox" id="timer-sound" ${timerSound?'checked':''}> Timer sound</label><button class="primary full">Start Round</button>`:''}</form><details class="panel"><summary>How to play</summary><p>Hold sideways and steady at your forehead. Your friends give clues. Tilt down for Correct and up for Pass, then return to your forehead before the next answer. You can also use the buttons.</p><p>Each card appears once per round. The round ends when time runs out or every card has been used. The timer waits while you position the phone.</p></details>`;return;}
+  const game=round as HeadbandsRound,ended=game.phase==='ended',paused=game.phase==='paused';
+  app.innerHTML=`<section class="game"><div class="game-status"><span class="tag">${paused?'Paused':ended?'Round complete':''}</span><span id="remaining">${showCountdown?`${Math.ceil(game.remaining/1000)}s`:''}</span></div><div class="prompt" aria-live="polite">${ended?(game.reason==='complete'?'Deck complete!':game.reason==='time'?'Time’s up!':'Round ended'):paused?'Paused':esc(game.current.text)}</div>${ended?`<p class="result">${game.score} correct · ${game.passed} passed · ${game.results.filter(r=>r.outcome==='Unanswered').length} unanswered</p>${button('new-round','Play Again','primary full')}${button('home','Home','full quiet')}<section class="list-panel results">${game.results.map(r=>`<div class="card-row"><span class="card-text">${esc(r.card.text)}</span><span class="muted">${r.outcome}</span></div>`).join('')}</section>`:paused?`<div class="actions">${button('resume','Resume','primary')}${button('end-round','End Round')}</div>`:`<p class="tilt-hint muted" id="tilt-status">${useTilt?(tilt.calibrated?'Return to forehead between tilts':'Hold sideways and steady to enable tilts'):'Button controls'}</p><div class="actions">${button('head-correct','Correct','primary')}${button('head-pass','Pass')}</div><div class="game-bottom">${button('pause','Pause','quiet')}<span class="muted">${game.score} correct</span>${button('end-round','End','quiet')}</div>`}</section>`;
 }
 function renderBackups(): void {
   const count=library.decks.reduce((n,d)=>n+d.cards.length,0);
@@ -113,7 +139,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.2.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.3.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <p class="section-label">EXPERIMENT</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section><p class="muted footnote">Separate PWA experiment. Your native DeckForge app is unchanged.</p>`;
 }
 function renderStorageError(): void {
@@ -125,7 +151,7 @@ function renderLab(): void {
   app.innerHTML=`<h2>Device tests</h2><p class="muted">Test from the Home Screen app, then repeat offline. These controls measure support; your eyes and ears confirm the experience.</p>
     <details class="panel diagnostic"><summary>Install & offline</summary>${metric('Launch mode',standalone?'Standalone Home Screen app':'Browser tab · install from Safari')}${metric('Secure connection',window.isSecureContext?'Yes':'No · use HTTPS on iPhone')}${metric('App files',offline,'lab-offline')}${metric('Network hint',navigator.onLine?'Online · hint only':'Offline · hint only','lab-network')}<p class="muted">After “Ready”, enable Airplane Mode, turn Wi-Fi off, close this app, and reopen from its icon. Play both games. An online/offline badge alone is not proof.</p>${button('reload','Reload to Test Offline')}<p></p>${button('media-range','Check Audio Cache')}</details>
     <details class="panel diagnostic"><summary>Storage survives reopening</summary>${metric('Saved test marker',library.probe ?? 'No marker saved yet','probe')}${metric('Persistence protection',storageMode,'storage-mode')}<p class="muted">Save a marker, fully close the Home Screen app, then reopen. The exact marker and your decks should remain.</p><div class="row">${button('save-probe','Save Test Marker','primary')}${button('storage','Check / Request Persistence')}</div><p></p>${button('backups','Backups')}<p class="muted">Export backups and restore copies from Backups.</p></details>
-    <details class="panel diagnostic"><summary>Motion & orientation</summary>${metric('Permission / sensor status',sensors.status,'sensor-status')}${metric('Readings',sensors.angles,'angles')}${metric('Acceleration including gravity',sensors.gravity,'gravity')}${metric('Events / rate / freshness','Not listening','sensor-count')}<div class="row">${button('sensors','Enable Sensors','primary')}${button('stop-sensors','Stop Sensors')}</div><p class="muted">Allow permission, turn sideways both ways, then tip the screen up and down. Values should change smoothly. Repeat after closing/reopening and after leaving the app. No Heads Up scoring is implemented.</p></details>
+    <details class="panel diagnostic"><summary>Motion & orientation</summary>${metric('Permission / sensor status',sensors.status,'sensor-status')}${metric('Readings',sensors.angles,'angles')}${metric('Acceleration including gravity',sensors.gravity,'gravity')}${metric('Events / rate / freshness','Not listening','sensor-count')}<div class="row">${button('sensors','Enable Sensors','primary')}${button('stop-sensors','Stop Sensors')}</div><p class="muted">Allow permission, turn sideways both ways, then tip the screen up and down. Values should change smoothly. Repeat after closing/reopening and after leaving the app. Headbands gameplay is available from Home.</p></details>
     <details class="panel diagnostic"><summary>Audio & background loop</summary><div class="row">${button('tone','Play Soft Tone','primary')}${button('start-loop','Start Loop')}${button('stop-audio','Stop Audio')}</div><label class="check"><input type="checkbox" id="round-loop" ${loopForRound?'checked':''}> Add test loop during Catchphrase</label><label class="check"><input type="checkbox" id="show-countdown" ${showCountdown?'checked':''}> Show countdown for testing</label><label class="check"><input type="checkbox" id="background-audio" ${audio.keepInBackground?'checked':''}> Keep the loop requested when hidden (test only)</label>${metric('Loop state','Not started','audio-status')}<p class="muted">Start the loop with a tap. Listen for 30 seconds during a round. To test background behavior, enable the option, switch apps or lock the phone, then return. Note any interruption; “playing” does not prove audible sound.</p><pre id="audio-events">No audio events yet.</pre></details>
     <details class="panel diagnostic"><summary>Haptic / vibration</summary>${metric('Vibration API',typeof navigator.vibrate === 'function'?'Available · feeling it is the real test':'Unavailable in this browser')}${button('vibrate','Test Vibration')}<p class="muted">Unavailable vibration is a platform limitation, not a deck-game failure.</p></details>`;
   updateLab();
@@ -139,8 +165,8 @@ async function mutate(change: (next: Library)=>void, checkpoint=false): Promise<
   } finally { saving=false; }
 }
 function navigate(target: string): void {
-  if(round && round.phase!=='ended' && !confirm('Leave and end the current round?')) return;
-  round=undefined; cues.reset(); audio.stop(); sensors.stop(); entry=''; editingCard=undefined; lookupIndex=null;
+  if((calibrating || (round && round.phase!=='ended')) && !confirm('Leave and end the current round?')) return;
+  gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
   route=target; say(''); render(); window.scrollTo({top:0});
 }
 function openEntry(next: typeof entry): void {
@@ -171,6 +197,7 @@ async function storageProtection(request: boolean): Promise<void> {
 }
 async function action(name: string): Promise<void> {
   const d=deck();
+  if(name.startsWith('award-')){const index=name==='award-none'?null:Number(name.slice(6));if(match?.award(index))render();return;}
   switch(name) {
     case 'home': navigate('home'); break;
     case 'settings': navigate('settings'); break;
@@ -190,11 +217,18 @@ async function action(name: string): Promise<void> {
     case 'lookup-prev': if(d?.cards.length) { lookupIndex=lookupIndex===null?0:Math.max(0,lookupIndex-1); render(); } break;
     case 'lookup-next': if(d?.cards.length) { lookupIndex=lookupIndex===null?0:Math.min(d.cards.length-1,lookupIndex+1); render(); } break;
     case 'lookup-random': if(d?.cards.length) { lookupIndex=Math.floor(Math.random()*d.cards.length); render(); } break;
-    case 'got-it': case 'pass': checkRound(); if(round?.answer(name==='got-it',performance.now())) render(); else checkRound(); break;
-    case 'pause': checkRound();if(round?.phase==='running'){round.pause(performance.now());cues.reset();audio.stop();}render();break;
-    case 'resume': if(timerSound) void audio.playTone().catch(audioError); if(loopForRound) void audio.startLoop().catch(audioError); round?.resume(performance.now()); if(round) cues.update(round.phase,round.remaining,roundLength,performance.now()); render(); break;
-    case 'end-round': if(confirm('End this round?')) { if(round) round.phase='ended'; cues.reset();audio.stop(); render(); } break;
-    case 'new-round': round=undefined;cues.reset();audio.stop(); render(); break;
+    case 'next-card': checkRound();if(round instanceof Round && round.answer(false,performance.now()))render();break;
+    case 'head-correct':case 'head-pass': headAnswer(name==='head-correct');break;
+    case 'pause': pauseGame();break;
+    case 'resume': if(preparing)break;if(route==='headbands')await prepareHeadbands(true);else if(round?.phase==='paused'){
+      const token=gameGeneration;await readyAudio();if(token!==gameGeneration||document.hidden||round?.phase!=='paused')break;round.resume(performance.now());gameAudio.schedule(round.remaining,roundLength,timerSound);if(loopForRound)void audio.startLoop().catch(audioError);void keepAwake();render();
+    }break;
+    case 'end-round': pauseGame();if(confirm('End this round?')){if(round instanceof HeadbandsRound)round.end();else if(round)round.phase='ended';gameAudio.stop();audio.stop();render();}break;
+    case 'new-round': gameGeneration++;round=undefined;gameAudio.stop();audio.stop();sensors.stop();tilt.reset();calibrating=false;render();break;
+    case 'next-team-round': if(match?.scored&&!preparing){const token=gameGeneration;preparing=true;try{await readyAudio();if(token===gameGeneration&&!document.hidden&&match?.scored){round=match.start(performance.now());startCues();}}finally{preparing=false;}}break;
+    case 'finish-game': navigate('home');break;
+    case 'use-buttons': if(!preparing){useTilt=false;calibrating=false;sensors.stop();tilt.reset();beginHeadbands();}break;
+    case 'cancel-headbands': gameGeneration++;calibrating=false;preparing=false;sensors.stop();tilt.reset();gameAudio.stop();releaseWake();render();break;
     case 'reload': location.reload(); break;
     case 'check-update': {
       if(!('serviceWorker' in navigator)) throw new Error('Updates need a secure browser connection.');
@@ -217,7 +251,7 @@ async function action(name: string): Promise<void> {
     case 'restore-backup': if(pendingBackup) {
       const restored=restoreBackup(library,pendingBackup.library,restoreMode);
       await mutate(next=>{Object.assign(next,restored);},restoreMode==='replace');
-      loadFailure='';restorePoint=await recovery();pendingBackup=undefined;entry='';selected='';lookupIndex=null;route='library';render();say('Backup restored and saved.');
+      draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;loadFailure='';restorePoint=await recovery();pendingBackup=undefined;entry='';selected='';lookupIndex=null;route='library';render();say('Backup restored and saved.');
     } break;
     case 'recover': if(restorePoint) { pendingBackup={library:restorePoint.library,source:'DeckForge PWA'};backupFilename='Local restore point';restoreMode='replace';render();say('Review this recovery copy before replacing the library.'); } break;
     case 'sensors': await sensors.start(); updateLab(); break;
@@ -244,18 +278,29 @@ async function submit(form: HTMLFormElement): Promise<void> {
       if(d) await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;for(const text of lines)target.cards.push({id:uid(),text});});entry='';render();say(`${lines.length} cards saved.`);break;
     }
     case 'lookup-form': if(d) {lookupIndex=lookup(d.cards,String(data.get('number')));render();say('');}break;
-    case 'round-form': if(d) {
-      const duration=Number(data.get('duration'));timerSound=document.querySelector<HTMLInputElement>('#timer-sound')!.checked;
-      if(timerSound) void audio.playTone().catch(audioError);if(loopForRound) void audio.startLoop().catch(audioError);
-      try { await mutate(next=>{next.duration=duration;}); } catch(error) {audio.stop();throw error;}
-      roundLength=duration*1000;round=new Round(d.cards,duration,performance.now());cues.reset();cues.update(round.phase,round.remaining,roundLength,performance.now());render();say('');break;
+    case 'round-form': if(d && !preparing){
+      const names=teamNames(draftTeams),duration=draftDuration;roundSeconds(duration);
+      timerSound=document.querySelector<HTMLInputElement>('#timer-sound')!.checked;
+      const token=++gameGeneration;preparing=true;const sound=readyAudio();render();
+      try{await Promise.all([sound,mutate(next=>{next.duration=duration;next.teams=names;})]);if(token!==gameGeneration||document.hidden)return;
+      match=new TeamGame(d.cards,names,duration);round=match.start(performance.now());startCues();say('');}
+      finally{preparing=false;render();}break;
+    }
+    case 'headbands-form': if(d && !preparing){
+      headDuration=Number(data.get('duration'));useTilt=document.querySelector<HTMLInputElement>('#use-tilt')!.checked;timerSound=document.querySelector<HTMLInputElement>('#timer-sound')!.checked;
+      await prepareHeadbands(false);break;
     }
   }
 }
 app.addEventListener('submit',event=>{event.preventDefault();if(event.target instanceof HTMLFormElement) void submit(event.target).catch(error=>say(`Could not save: ${String(error)}`));});
-app.addEventListener('input',event=>{if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent=`${importLines(event.target.value).length} cards ready`;});
+app.addEventListener('input',event=>{if(event.target instanceof HTMLInputElement && event.target.dataset.team!==undefined)draftTeams[Number(event.target.dataset.team)]=event.target.value;if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent=`${importLines(event.target.value).length} cards ready`;});
 app.addEventListener('change',event=>{
   const el=event.target;
+  if(el instanceof HTMLSelectElement && el.id==='team-count'){const count=Number(el.value);while(draftTeams.length<count)draftTeams.push('Team '+(draftTeams.length+1));draftTeams=draftTeams.slice(0,count);render();}
+  if(el instanceof HTMLSelectElement && el.id==='duration')draftDuration=Number(el.value);
+  if(el instanceof HTMLSelectElement && el.id==='head-duration')headDuration=Number(el.value);
+  if(el instanceof HTMLInputElement && el.id==='timer-sound')timerSound=el.checked;
+  if(el instanceof HTMLInputElement && el.id==='use-tilt')useTilt=el.checked;
   if(el instanceof HTMLSelectElement && el.id==='deck-picker') {selected=el.value;lookupIndex=null;render();}
   if(el instanceof HTMLSelectElement && el.id==='restore-mode') {restoreMode=el.value==='replace'?'replace':'add';render();}
   if(el instanceof HTMLInputElement && el.id==='background-audio') audio.keepInBackground=el.checked;
@@ -276,14 +321,52 @@ document.addEventListener('click',event=>{
   else if(el.dataset.edit) {editingCard=el.dataset.edit;openEntry('card');document.querySelector('#card-form')?.scrollIntoView({block:'start',behavior:'smooth'});}
   else if(el.dataset.action) void action(el.dataset.action).catch(error=>say(`Could not complete action: ${String(error)}`));
 });
+async function readyAudio():Promise<void> {
+  try{await gameAudio.unlock();}catch(error){timerSound=false;audio.log(String(error));say('Sound unavailable. You can still play with the controls.');}
+}
+async function keepAwake():Promise<void> {
+  try{if('wakeLock' in navigator && !document.hidden && (calibrating||round?.phase==='running')){const lock=await navigator.wakeLock.request('screen');if(document.hidden||(!calibrating&&round?.phase!=='running'))await lock.release();else{await wakeLock?.release();wakeLock=lock;}}}catch{}
+}
+function releaseWake():void {void wakeLock?.release();wakeLock=undefined;}
+function startCues():void {
+  if(!round)return;roundLength=round.remaining;gameAudio.schedule(round.remaining,roundLength,timerSound);if(route==='catchphrase'&&loopForRound)void audio.startLoop().catch(audioError);void keepAwake();render();
+}
+function beginHeadbands():void {
+  calibrating=false;
+  if(round instanceof HeadbandsRound&&round.phase==='paused'){round.resume(performance.now());gameAudio.schedule(round.remaining,roundLength,timerSound);void keepAwake();render();}
+  else{round=new HeadbandsRound(deck()!.cards,roundSeconds(headDuration),performance.now());startCues();}
+}
+async function prepareHeadbands(resuming:boolean):Promise<void> {
+  if(preparing)return;roundSeconds(headDuration);const token=++gameGeneration;preparing=true;calibrating=useTilt;tilt.reset();sensors.onGravity=undefined;
+  const sound=readyAudio(),permission=useTilt?sensors.start():Promise.resolve();render();void keepAwake();
+  try{
+    await Promise.all([sound,permission,resuming?Promise.resolve():mutate(next=>{next.headbandsDuration=headDuration;})]);
+    if(token!==gameGeneration||document.hidden)return;
+    if(useTilt){
+      sensors.onGravity=(g,at)=>{
+        if(document.hidden||route!=='headbands')return;
+        const event=tilt.update(...g,at);if(event==='ready'&&calibrating)beginHeadbands();else if(!calibrating&&round?.phase==='running'&&(event==='correct'||event==='pass'))headAnswer(event==='correct');
+        const status=document.querySelector('#tilt-status');if(status&&!calibrating)status.textContent=tilt.calibrated?'Return to forehead between tilts':'Hold sideways and steady to enable tilts';
+      };
+    }else beginHeadbands();
+  }finally{if(token===gameGeneration){preparing=false;render();}}
+}
+function headAnswer(correct:boolean):void {
+  checkRound();if(!(round instanceof HeadbandsRound))return;
+  if(round.answer(correct,performance.now())){gameAudio.feedback(correct);tilt.disarm();if(round.phase==='ended'){gameAudio.stopCountdown();sensors.stop();releaseWake();}render();}
+}
+function pauseGame():void {
+  checkRound();gameGeneration++;preparing=false;calibrating=false;
+  if(round?.phase==='running')round.pause(performance.now());
+  // Expiry owns its scheduled buzzer; pausing an already-ended round must not cut it off.
+  if(round?.phase!=='ended')gameAudio.stop();audio.stop();sensors.stop();tilt.reset();releaseWake();render();
+}
+gameAudio.onInterrupt=()=>{if(calibrating||round?.phase==='running'){pauseGame();say('Audio was interrupted. Tap Resume when ready.');}};
 function checkRound(): void {
-  if(!round)return;
-  const previous=round.phase,now=performance.now();round.tick(now);
-  const cue=cues.update(round.phase,round.remaining,roundLength,now);
-  if(timerSound && cue==='beep')void audio.playTone().catch(audioError);
-  if(cue==='buzzer') {if(timerSound)void audio.expiry().catch(audioError);else audio.stop();}
-  if(previous==='running' && round.phase==='ended')render();
-  const remaining=document.querySelector('#remaining');if(remaining && showCountdown)remaining.textContent=`${Math.ceil(round.remaining/1000)}s`;
+  if(calibrating&&!preparing){const status=document.querySelector('#tilt-status');if(status&&sensors.motionAllowed&&!sensors.lastAt&&performance.now()-sensors.startedAt>5000)status.textContent='No motion readings yet. Use Buttons, or check motion permission in Safari.';}
+  if(!round)return;const previous=round.phase;round.tick(performance.now());
+  if(previous==='running'&&round.phase==='ended'){audio.stop();sensors.stop();tilt.reset();releaseWake();render();}
+  const remaining=document.querySelector('#remaining');if(remaining&&showCountdown)remaining.textContent=`${Math.ceil(round.remaining/1000)}s`;
 }
 function updateLab(): void {
   if(route!=='lab')return;
@@ -299,11 +382,11 @@ window.setInterval(checkRound,50);window.setInterval(updateLab,250);
 document.addEventListener('visibilitychange',()=>{
   audio.log(`App ${document.hidden?'hidden':'visible'}`);
   if(document.hidden) {
-    if(round?.phase==='running') {round.pause(performance.now());cues.reset();say('Paused while the app was off screen. Tap Resume to continue.');render();}
-    sensors.stop();if(!audio.keepInBackground)audio.stop();
+    if(calibrating||preparing||round?.phase==='running'){pauseGame();say('Paused while the app was off screen. Resume when ready.');}
+    gameAudio.stop();sensors.stop();releaseWake();if(!audio.keepInBackground)audio.stop();
   }
 });
-window.addEventListener('pagehide',()=>{sensors.stop();cues.reset();if(!audio.keepInBackground)audio.stop();});
+window.addEventListener('pagehide',()=>{sensors.stop();gameAudio.stop();releaseWake();if(!audio.keepInBackground)audio.stop();});
 function connection(): void {document.querySelector('#connection')!.textContent=navigator.onLine?'Online':'Offline';updateLab();}
 window.addEventListener('online',connection);window.addEventListener('offline',connection);connection();
 async function setupOffline(): Promise<void> {
@@ -318,5 +401,5 @@ async function setupOffline(): Promise<void> {
     registration.addEventListener('updatefound',()=>{const installing=registration.installing;installing?.addEventListener('statechange',ready);});
   } catch(error) {offline='Offline setup failed · reopen online';mark();say(`Offline setup: ${String(error)}`);}
 }
-try {library=await load();restorePoint=await recovery();render();void storageProtection(true);void setupOffline();}
+try {library=await load();draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;restorePoint=await recovery();render();void storageProtection(true);void setupOffline();}
 catch(error) {library=emptyLibrary();loadFailure=String(error);futureData=error instanceof NewerFormatError;try{restorePoint=await recovery();}catch{}render();void setupOffline();}

@@ -1,5 +1,8 @@
+import {browserGravity} from './tilt.js';
 type PermissionEventConstructor = { requestPermission?: () => Promise<'granted' | 'denied'> };
 export class Sensors {
+  onGravity?: (gravity: [number,number,number], now: number)=>void;
+  motionAllowed=false;
   status = 'Not started. Tap Enable Sensors on your iPhone.';
   orientationCount = 0;
   motionCount = 0;
@@ -25,6 +28,7 @@ export class Sensors {
     if(g && [g.x,g.y,g.z].some(v=>typeof v === 'number' && Number.isFinite(v))) {
       this.validMotion++; this.lastAt=performance.now();
     }
+    if(g) {const gravity=browserGravity(g,event.acceleration);if(gravity)this.onGravity?.(gravity,performance.now()/1000);}
     this.gravity = `x ${format(g?.x)} · y ${format(g?.y)} · z ${format(g?.z)} m/s²`;
   };
   async start(): Promise<void> {
@@ -43,6 +47,7 @@ export class Sensors {
     if(generation !== this.generation) return;
     const allowed = results.map(result => result.status === 'fulfilled' && result.value === 'granted');
     if(!allowed.some(Boolean)) { this.status='Permission denied or unavailable. Reopen and tap Enable Sensors to retry.'; return; }
+    this.motionAllowed=allowed[1] ?? false;
     if(allowed[0]) window.addEventListener('deviceorientation',this.orientation);
     if(allowed[1]) window.addEventListener('devicemotion',this.motion);
     this.active=true; this.startedAt=performance.now();
@@ -57,7 +62,7 @@ export class Sensors {
     window.removeEventListener('devicemotion',this.motion);
     window.clearTimeout(this.timeout);
     if(this.active) this.status='Stopped. Tap Enable Sensors to restart.';
-    this.active=false;
+    this.active=false;this.motionAllowed=false;
   }
 }
 function format(value: number | null | undefined): string { return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) : '—'; }

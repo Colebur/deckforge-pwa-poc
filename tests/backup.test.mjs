@@ -12,7 +12,7 @@ test('versioned export/restore preserves deck order, duplicate prompts, settings
 });
 test('old persisted library upgrades without losing IDs or data, new state roundtrips',()=>{
   assert.deepEqual(decodeState(library),library); assert.deepEqual(decodeState(encodeState(library)),library);
-  assert.throws(()=>decodeState({format:'deckforge-pwa-state',version:2,library}),NewerFormatError);
+  assert.throws(()=>decodeState({format:'deckforge-pwa-state',version:3,library}),NewerFormatError);
 });
 test('additive restore is non-mutating and repeated imports have fresh IDs',()=>{
   let sequence=0; const next=restoreBackup(library,library,'add',()=>`copy-${sequence++}`);
@@ -26,7 +26,7 @@ test('original POC and exported native backups are readable',()=>{
 });
 test('bad, partial, duplicate-ID and future backups are rejected before mutation',()=>{
   for(const text of ['{','null','{}',JSON.stringify({format:'other',...library}),JSON.stringify({version:1,decks:[{name:'Oops',cards:['']}]}),JSON.stringify({format:'deckforge-pwa-backup',version:1,library:{...library,decks:[{...library.decks[0],cards:[{id:'a',text:'A'},{id:'a',text:'B'}]}]}})]) assert.throws(()=>parseBackup(text));
-  assert.throws(()=>parseBackup(JSON.stringify({format:'deckforge-pwa-backup',version:2,library})),NewerFormatError);
+  assert.throws(()=>parseBackup(JSON.stringify({format:'deckforge-pwa-backup',version:3,library})),NewerFormatError);
   assert.equal(library.decks.length,1);
 });
 test('2,000-card backup restores every numbered position',()=>{
@@ -34,8 +34,8 @@ test('2,000-card backup restores every numbered position',()=>{
   const restored=parseBackup(exportBackup(large)).library;
   assert.deepEqual(restored,large);assert.equal(restored.decks[0].cards[1999].text,'Item 2000');
 });
-test('timer uses native two-second-to-220ms acceleration curve',()=>{
-  assert.equal(beepInterval(90000,90000),2000);assert.equal(beepInterval(0,90000),220);
+test('timer smoothly accelerates from two seconds to urgent 180ms cues',()=>{
+  assert.equal(beepInterval(90000,90000),2000);assert.equal(beepInterval(0,90000),180);
   assert.ok(beepInterval(45000,90000)<2000);assert.ok(beepInterval(1000,90000)<beepInterval(45000,90000));
 });
 test('cue scheduling respects pause/resume and buzzes only once at expiry',()=>{

@@ -33,3 +33,13 @@ No full migration approved or performed. Native DeckForge remains untouched in i
 
 Live trial: https://colebur.github.io/deckforge-pwa-poc/
 Source: https://github.com/Colebur/deckforge-pwa-poc
+
+## Version 0.3 native game parity
+
+- Strict TypeScript compilation and all 28 automated tests pass: original rules and backups plus team validation, all timer choices, inclusive fresh random range, single-point award, Headbands single-pass results, pause/late-answer rules, both landscape tilt sequences, neutral rearming, stale readings, web-to-native gravity conversion, continuous urgent cue plan and audio output-device scheduling/cancellation.
+- Upgraded the existing local cached app without clearing its three decks. Catchphrase initial setup selected Random, offered 2–8 teams and every 15-second choice through 300 seconds.
+- Browser: named three teams Blue/Red/Gold; started a 15-second round; natural expiry prompted for one point; Red became 1 and could not score again. Next round kept the score; pause/resume and Next Card worked; No point preserved scores.
+- Headbands: Start waited at Hold Steady without spending timer time; Use Buttons began play. Five accepted button answers finished the deck with 3 Correct / 2 Passed / 0 Unanswered and retained both duplicate cards in results. Landscape calibration fit without horizontal overflow.
+- Physical motion was not simulated through the browser. Real iPhone tilt calibration/direction, sound smoothness/urgency and final buzzer audibility remain the user's next tests. Synthetic detector sequences and audio output schedules are automated checks, not physical-device results.
+
+New iPhone checklist: Settings version 0.3.0; saved deck order unchanged; named teams/settings survive reopening; Random rerolls every round without showing its duration; award exactly one team point; listen through a full round/pause/resume/offline; Headbands sideways hold starts the timer, down scores Correct, up Pass, held tilt scores only once, return-to-neutral rearms, and both landscape directions work; pause/resume recalibrates; results and feedback match answers. Use Buttons is a working fallback if motion is denied or unavailable.
