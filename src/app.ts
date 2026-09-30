@@ -1,4 +1,4 @@
-import { importLines, lookup, Round, emptyLibrary, type Deck, type Library } from './model.js';
+import { importLines, randomPrompt, type PromptDraw, lookup, Round, emptyLibrary, type Deck, type Library } from './model.js';
 import { load, save, recovery, type Recovery } from './storage.js';
 import { exportBackup, parseBackup, restoreBackup, MAX_BACKUP_BYTES, NewerFormatError, type BackupPreview } from './backup.js';
 import {TeamGame, HeadbandsRound, TIMER_CHOICES, defaultTeams, teamNames, roundSeconds} from './games.js';
@@ -16,6 +16,8 @@ let library: Library;
 let route = 'home';
 let selected = '';
 let lookupIndex: number | null = null;
+let promptDeck: string | null = null;
+let promptDraw: PromptDraw | undefined;
 let round: Round | HeadbandsRound | undefined;
 let match: TeamGame | undefined;
 let draftTeams=defaultTeams();
@@ -58,9 +60,9 @@ function picker(): string {
   return `<label for="deck-picker">Deck</label><select id="deck-picker">${playable.map(d=>`<option value="${esc(d.id)}" ${d.id===selected?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`).join('')}</select>`;
 }
 function render(): void {
-  const playing=['catchphrase','headbands'].includes(route) && (calibrating || (!!round && round.phase!=='ended')); 
+  const playing=(['catchphrase','headbands'].includes(route) && (calibrating || (!!round && round.phase!=='ended'))) || (route==='prompts' && !!promptDraw); 
   document.body.classList.toggle('playing',playing);
-  document.querySelector<HTMLElement>('#page-title')!.textContent=({home:'DeckForge',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Numbered Lookup',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
+  document.querySelector<HTMLElement>('#page-title')!.textContent=({home:'DeckForge',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Numbered Lookup',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
   document.querySelector<HTMLButtonElement>('#home-button')!.hidden=route==='home';
   document.querySelector<HTMLButtonElement>('#settings-button')!.hidden=route==='settings' || !!loadFailure;
   document.querySelector<HTMLElement>('footer')!.hidden=!['settings','lab'].includes(route);
@@ -69,6 +71,7 @@ function render(): void {
   else if(route==='library') renderLibrary();
   else if(route==='editor') renderEditor();
   else if(route==='lookup') renderLookup();
+  else if(route==='prompts') renderPrompts();
   else if(route==='catchphrase') renderCatchphrase();
   else if(route==='headbands') renderHeadbands();
   else if(route==='backups') renderBackups();
@@ -76,7 +79,7 @@ function render(): void {
   else renderLab();
 }
 function renderHome(): void {
-  app.innerHTML=`<p class="section-label">PLAY</p><section class="list-panel">${destination('catchphrase','Catchphrase','Give clues. Guess the word. Pass the phone.','◷')}${destination('headbands','Headbands','Hold it at your forehead. Tilt to answer.','▱')}${destination('lookup','Numbered Lookup / Jenga','Find a card by its number, or pick at random.','#')}</section>
+  app.innerHTML=`<p class="section-label">PLAY</p><section class="list-panel">${destination('catchphrase','Catchphrase','Give clues. Guess the word. Pass the phone.','◷')}${destination('headbands','Headbands','Hold it at your forehead. Tilt to answer.','▱')}${destination('prompts','Prompt Picker','Random ideas for charades, Pictionary or 20 Questions.','✦')}${destination('lookup','Numbered Lookup / Jenga','Find a card by its number, or pick at random.','#')}</section>
     <p class="section-label">YOUR DECKS</p><section class="list-panel">${destination('library','Manage Decks',`${library.decks.length} ${library.decks.length===1?'deck':'decks'} saved on this device`,'▱')}${destination('backups','Backups','Save a copy or restore a backup.','↥')}</section>`;
 }
 function renderLibrary(): void {
@@ -102,6 +105,15 @@ function renderLookup(): void {
   app.innerHTML=`<section class="panel compact">${choose}</section>${d?.cards.length?`
     <form id="lookup-form" class="number-form"><label for="item-number">Card number · 1–${d.cards.length}</label><div class="row"><input id="item-number" name="number" type="text" inputmode="numeric" pattern="[0-9]+" value="${lookupIndex===null?'':lookupIndex+1}" required><button class="narrow primary">Show</button></div></form>
     <section class="panel"><span class="tag">${lookupIndex===null?'Choose a number':`Card ${lookupIndex+1} of ${d.cards.length}`}</span><div class="prompt">${lookupIndex===null?'Ready when you are':esc(d.cards[lookupIndex]?.text ?? '')}</div><div class="row"><button data-action="lookup-prev" ${lookupIndex===0?'disabled':''}>Previous</button><button data-action="lookup-next" ${lookupIndex===d.cards.length-1?'disabled':''}>Next</button>${button('lookup-random','Random')}</div></section>`:''}`;
+}
+function renderPrompts(): void {
+  const playable=library.decks.filter(d=>d.cards.length);
+  if(promptDeck!==null && !playable.some(d=>d.id===promptDeck)){promptDeck=null;promptDraw=undefined;}
+  if(promptDraw){
+    app.innerHTML=`<section class="game active-game prompt-picker"><div class="game-status"><span class="tag">${esc(promptDraw.deck.name)}</span><span class="tag">${promptDeck===null?'All Decks':'One deck'}</span></div><div class="prompt" aria-live="polite">${esc(promptDraw.card.text)}</div><div class="game-controls"><div class="answer-bar">${button('prompt-choose','Decks','quiet')}${button('prompt-draw','Draw Again','primary next-card')}${button('home','Home','quiet')}</div></div></section>`;return;
+  }
+  const count=playable.reduce((total,d)=>total+d.cards.length,0);
+  app.innerHTML=playable.length?`<section class="panel"><label for="prompt-deck">Draw from</label><select id="prompt-deck"><option value="" ${promptDeck===null?'selected':''}>All Decks · ${count} cards</option>${playable.map(d=>`<option value="${esc(d.id)}" ${d.id===promptDeck?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`).join('')}</select>${button('prompt-draw','Draw a Prompt','primary full')}</section><details class="panel"><summary>How to play</summary><p>Act it out, draw it, or let friends ask up to 20 yes-or-no questions. One mode supplies the prompts; you choose the rules.</p><p>All Decks gives every card the same chance. Each draw is independent, so repeats are possible. The source deck appears above the word.</p></details>`:`<section class="panel"><p class="empty">Add cards in Manage Decks to draw a prompt.</p>${button('prompt-library','Manage Decks','primary full')}</section>`;
 }
 function durationPicker(value:number):string {
   const choices=[...TIMER_CHOICES];if(!choices.includes(value))choices.push(value);
@@ -139,7 +151,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.3.2')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.4.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <p class="section-label">EXPERIMENT</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section><p class="muted footnote">Separate PWA experiment. Your native DeckForge app is unchanged.</p>`;
 }
 function renderStorageError(): void {
@@ -167,7 +179,7 @@ async function mutate(change: (next: Library)=>void, checkpoint=false): Promise<
 function navigate(target: string): void {
   if((calibrating || (round && round.phase!=='ended')) && !confirm('Leave and end the current round?')) return;
   gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
-  route=target; say(''); render(); window.scrollTo({top:0});
+  promptDraw=undefined;route=target; say(''); render(); window.scrollTo({top:0});
 }
 function openEntry(next: typeof entry): void {
   entry=next; render(); app.querySelector<HTMLElement>('input,textarea')?.focus();
@@ -214,6 +226,9 @@ async function action(name: string): Promise<void> {
     case 'cancel-edit': editingCard=undefined; entry=''; render(); break;
     case 'page-prev': cardPage--; render(); break;
     case 'page-next': cardPage++; render(); break;
+    case 'prompt-draw': promptDraw=randomPrompt(library.decks,promptDeck);render();if(promptDraw)window.scrollTo({top:0});break;
+    case 'prompt-choose': promptDraw=undefined;render();break;
+    case 'prompt-library': navigate('library');break;
     case 'lookup-prev': if(d?.cards.length) { lookupIndex=lookupIndex===null?0:Math.max(0,lookupIndex-1); render(); } break;
     case 'lookup-next': if(d?.cards.length) { lookupIndex=lookupIndex===null?0:Math.min(d.cards.length-1,lookupIndex+1); render(); } break;
     case 'lookup-random': if(d?.cards.length) { lookupIndex=Math.floor(Math.random()*d.cards.length); render(); } break;
@@ -301,6 +316,7 @@ app.addEventListener('change',event=>{
   if(el instanceof HTMLSelectElement && el.id==='head-duration')headDuration=Number(el.value);
   if(el instanceof HTMLInputElement && el.id==='timer-sound')timerSound=el.checked;
   if(el instanceof HTMLInputElement && el.id==='use-tilt')useTilt=el.checked;
+  if(el instanceof HTMLSelectElement && el.id==='prompt-deck'){promptDeck=el.value || null;promptDraw=undefined;render();}
   if(el instanceof HTMLSelectElement && el.id==='deck-picker') {selected=el.value;lookupIndex=null;render();}
   if(el instanceof HTMLSelectElement && el.id==='restore-mode') {restoreMode=el.value==='replace'?'replace':'add';render();}
   if(el instanceof HTMLInputElement && el.id==='background-audio') audio.keepInBackground=el.checked;

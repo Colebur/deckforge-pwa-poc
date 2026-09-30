@@ -14,6 +14,20 @@ export function shuffled<T>(items: readonly T[], random = Math.random): T[] {
   }
   return copy;
 }
+export interface PromptDraw { deck: Deck; card: Card }
+// Pick a card position across the combined library, rather than picking a deck first.
+// That gives cards in small and large decks the same chance, without copying them.
+export function randomPrompt(decks: readonly Deck[], deckId: string | null = null, random = Math.random): PromptDraw | undefined {
+  const pool = deckId === null ? decks : decks.filter(deck => deck.id === deckId);
+  const count = pool.reduce((total, deck) => total + deck.cards.length, 0);
+  if (!count) return undefined;
+  let index = Math.floor(random() * count);
+  for (const deck of pool) {
+    if (index < deck.cards.length) return {deck, card: deck.cards[index]!};
+    index -= deck.cards.length;
+  }
+  return undefined;
+}
 export function lookup(cards: readonly Card[], number: string): number {
   const input = number.trim();
   if (!/^\d+$/.test(input)) throw new Error('Enter a whole item number.');
