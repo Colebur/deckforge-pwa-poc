@@ -21,7 +21,7 @@ ${mediaCode}
 const PREFIX = 'deckforge-poc-' + encodeURIComponent(new URL(self.registration.scope).pathname) + '-';
 const CACHE = PREFIX + '${version}';
 const ASSETS = ${JSON.stringify(assets.map(x=>'./'+x))};
-self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS))));
+self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS.map(url=>new Request(url,{cache:'reload'}))))));
 // An update waits until all old app windows close: never reload an active round.
 self.addEventListener('activate', event => event.waitUntil((async()=>{
   for (const name of await caches.keys()) if(name.startsWith(PREFIX) && name !== CACHE) await caches.delete(name);
