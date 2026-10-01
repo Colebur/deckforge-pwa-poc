@@ -45,7 +45,7 @@ The local server is a development preview. The preview server binds to localhost
 
 On iPhone, open the HTTPS deployment in Safari, use Share → Add to Home Screen, then launch the icon. Android browsers offer an install/add-to-home-screen option; desktop installation depends on browser support.
 
-Settings → Check for Update downloads updates. Close **all** windows for this app and reopen to activate them. Updates wait rather than reloading an active round. Version **0.11.0** should appear in Settings after this release. Keep the same site address: browser storage belongs to its origin.
+Settings → Check for Update downloads updates. Close **all** windows for this app and reopen to activate them. Updates wait rather than reloading an active round. Version **0.11.1** should appear in Settings after this release. Keep the same site address: browser storage belongs to its origin.
 
 ## Local data, offline use and backups
 
@@ -57,7 +57,7 @@ Restore defaults to adding independent copies. Replacement requires an explicit 
 
 ## iPhone acceptance checklist
 
-1. Export a backup, update, close all app windows and reopen. Check **0.11.0** and **Ready/cached offline**.
+1. Export a backup, update, close all app windows and reopen. Check **0.11.1** and **Ready/cached offline**.
 2. Open a deck with over 50 cards. Expand All, inspect the last card, then restore 50-item pages. Card order/numbers should stay unchanged.
 3. Duplicate a deck. Edit the copy; confirm the original cards, Activities and organization remain intact.
 4. Paste numbered lines with one duplicate. Review without saving, change a line and verify the review disappears. Review again; compare keeping duplicates with Skip duplicates.
@@ -86,3 +86,9 @@ The shared picker extraction preserves existing ranking/filter behavior. Sharing
 Motion/audio require browser support, permissions and user interaction. A motion sensor detects orientation/movement, not physical forehead contact. Haptics may be unavailable on iPhone. Screen lock, backgrounding and interruptions can suspend audio or gameplay; foreground trials do not prove reliable background playback. Exact physical sound, sensor feel and safe-area behavior require device testing. HTTPS hosting and cached assets enable offline use but do not promise permanent storage or perpetual hosting.
 
 No multiplayer, accounts, cloud sync, billing or native packaging are implemented by this release. The separate native project is outside this repository.
+
+## Navigation motion
+
+Tab changes use a subtle directional fade/slide; opening decks or mode setup uses a small upward entrance, and returning to a library/home uses a light reverse motion. Transitions take 180 milliseconds and never delay input. Tapping the current tab again does not replay motion. Existing navigation focus and scroll behavior remain available. Editing, drawing cards, timers and tilt feedback do not start these animations. A new navigation cancels the previous transition, and the device's Reduce Motion preference disables motion (including when changed while the app is open).
+
+After updating to 0.11.1, try Play → Work → Decks and back, open a deck and a game setup, and switch tabs rapidly. Check portrait/landscape, larger text and keyboard focus. Enable Reduce Motion in device accessibility settings and repeat: navigation should be immediate without sliding/fading. Game prompts should remain steady during rounds.
