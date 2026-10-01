@@ -32,7 +32,9 @@ export class TiltDetector {
       if(this.candidate===undefined || Math.abs(angle-this.candidate)>5){this.candidate=angle;this.candidateSince=time;}
       return null;
     }
-    if(Math.abs(y)>=0.5 || x*this.sign<0){this.reset();return null;}
+    // Sideways lean is allowed: elevation uses the whole in-screen gravity vector.
+    // Turning into the opposite landscape direction still requires calibration.
+    if(x*this.sign<0){this.reset();return null;}
     const delta=angle-this.baseline;
     if(Math.abs(delta)<=12){this.pending=undefined;this.pendingSince=undefined;this.neutralSince??=time;if(time-this.neutralSince>=0.18)this.armed=true;return null;}
     this.neutralSince=undefined;if(!this.armed)return null;

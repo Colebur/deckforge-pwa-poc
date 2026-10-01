@@ -24,7 +24,14 @@ export class GameAudio {
   }
   placementCountdown(enabled:boolean):void {
     this.stopCountdown();const ctx=this.context;if(!enabled||!ctx||ctx.state!=='running')return;
-    for(let i=0;i<3;i++)this.clip('tone',ctx.currentTime+i,0.65,this.nodes,0.14);
+    for(let i=0;i<3;i++)this.startChime(ctx.currentTime+i);
+  }
+  private startChime(at:number):void {
+    const ctx=this.context!,oscillator=ctx.createOscillator(),gain=ctx.createGain();
+    // A high, short triangle chime distinguishes preparation from gameplay ticks.
+    oscillator.type='triangle';oscillator.frequency.value=1320;
+    gain.gain.setValueAtTime(0,at);gain.gain.linearRampToValueAtTime(0.24,at+0.004);gain.gain.linearRampToValueAtTime(0,at+0.16);
+    oscillator.connect(gain);gain.connect(ctx.destination);oscillator.addEventListener('ended',()=>gain.disconnect(),{once:true});this.track(oscillator,this.nodes);oscillator.start(at);oscillator.stop(at+0.17);
   }
   schedule(remaining:number,length:number,enabled:boolean):void {
     this.stopCountdown();const ctx=this.context;if(!enabled||!ctx||ctx.state!=='running')return;

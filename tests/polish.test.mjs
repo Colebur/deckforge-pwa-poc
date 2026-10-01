@@ -37,3 +37,13 @@ test('explicit detector captures the actual forehead angle in both landscape dir
  d.update(...pose(15,sign),2);assert.equal(d.calibrated,false);for(let t=2.02;t<3;t+=.02)d.update(...pose(15,sign),t);assert.equal(d.calibrated,false);
  }
 });
+
+test('diagonal gestures accept sideways lean without lowering elevation threshold or double scoring',()=>{
+ for(const sign of [1,-1])for(const lean of [-65,65]){
+  const d=new TiltDetector(false);assert.equal(d.calibrate([sign,0,0],0),true);
+  let t=0;const sample=(degrees,duration)=>{const events=[];const a=degrees*Math.PI/180,b=lean*Math.PI/180;for(let i=0;i<duration;i++){t+=.02;const e=d.update(sign*Math.cos(a)*Math.cos(b),Math.cos(a)*Math.sin(b),Math.sin(a),t);if(e)events.push(e);}return events;};
+  assert.deepEqual(sample(20,10),[]);assert.equal(d.calibrated,true);
+  assert.deepEqual(sample(26,10),['correct']);assert.deepEqual(sample(26,10),[]);
+  assert.deepEqual(sample(-26,10),[]);sample(0,12);assert.deepEqual(sample(-26,10),['pass']);
+ }
+});
