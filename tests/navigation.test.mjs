@@ -5,9 +5,9 @@ import {MODES,metadata,modeDecks,sectionRoot} from '../dist/modes.js';
 import {decodeState,encodeState,exportBackup,parseBackup,restoreBackup} from '../dist/backup.js';
 const old={decks:[{id:'d',name:'Old',cards:[{id:'c',text:'Unchanged'}],activities:[{id:'a',text:'Say {card}',createdAt:'2026-09-30T00:00:00.000Z'}]}],duration:90,probe:'keep'};
 test('all legacy formats add conservative metadata without changing content or mutating input',()=>{
- for(const version of [1,2,3,4]){const upgraded=decodeState({format:'deckforge-pwa-state',version,library:old});assert.deepEqual(upgraded.decks[0],{...old.decks[0],...metadata(undefined,undefined,'regular')});assert.deepEqual(upgraded.decks[0].cards,old.decks[0].cards);assert.deepEqual(upgraded.decks[0].activities,old.decks[0].activities);}
+ for(const version of [1,2,3,4]){const upgraded=decodeState({format:'deckforge-pwa-state',version,library:old});assert.deepEqual(upgraded.decks[0],{...old.decks[0],...metadata(undefined,['prompts','catchphrase','headbands'],'regular')});assert.deepEqual(upgraded.decks[0].cards,old.decks[0].cards);assert.deepEqual(upgraded.decks[0].activities,old.decks[0].activities);}
  assert.equal(old.decks[0].deckContext,undefined);
- const native=parseBackup(JSON.stringify({version:1,decks:[{name:'Native',cards:['A']}]})).library.decks[0];assert.equal(native.deckContext,'both');assert.ok(native.compatibleModes.includes('lookup'));
+ const native=parseBackup(JSON.stringify({version:1,decks:[{name:'Native',cards:['A']}]})).library.decks[0];assert.equal(native.deckContext,'both');assert.ok(!native.compatibleModes.includes('lookup'));
 });
 test('metadata survives save, export and both restore strategies including unknown future modes and empty assignment',()=>{
  for(const context of ['play','work','both'])for(const modes of [[],['lookup','headbands','futureMode']]){
