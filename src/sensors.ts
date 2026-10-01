@@ -10,6 +10,7 @@ export class Sensors {
   validMotion = 0;
   startedAt = 0;
   lastAt = 0;
+  heading:number|undefined;
   angles = 'No orientation readings yet';
   gravity = 'No acceleration readings yet';
   active = false;
@@ -17,6 +18,7 @@ export class Sensors {
   private timeout?: number;
   private orientation = (event: DeviceOrientationEvent): void => {
     this.orientationCount++;
+    this.heading=typeof event.alpha==='number'&&Number.isFinite(event.alpha)?event.alpha:undefined;
     if ([event.alpha,event.beta,event.gamma].some(v=>typeof v === 'number' && Number.isFinite(v))) {
       this.validOrientation++; this.lastAt=performance.now();
     }
@@ -39,7 +41,7 @@ export class Sensors {
     const motion = window.DeviceMotionEvent as unknown as PermissionEventConstructor | undefined;
     if(!orientation && !motion) { this.status='Sensor APIs are unavailable in this browser.'; return; }
     this.orientationCount=this.motionCount=this.validOrientation=this.validMotion=0;
-    this.lastAt=0; this.angles='Waiting for orientation…'; this.gravity='Waiting for acceleration…';
+    this.lastAt=0;this.heading=undefined; this.angles='Waiting for orientation…'; this.gravity='Waiting for acceleration…';
     this.status='Requesting permission…';
     // Both requests are invoked before the first await, while the tap is still active.
     const requests = [orientation,motion].map(api => api?.requestPermission ? api.requestPermission() : Promise.resolve(api ? 'granted' : 'unavailable'));

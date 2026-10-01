@@ -1,6 +1,8 @@
+import {foreheadPose,type Gravity} from './headbands-setup.js';
 export type TiltEvent='ready'|'correct'|'pass';
 // Gentle deliberate gestures; return to neutral prevents repeated answers. Times are seconds.
 export class TiltDetector {
+  constructor(private readonly automaticCalibration=true){}
   calibrated=false;
   private baseline=0;
   private sign=1;
@@ -12,6 +14,10 @@ export class TiltDetector {
   private armed=false;
   private last?:number;
   reset():void {this.calibrated=false;this.baseline=0;this.sign=1;this.candidate=undefined;this.candidateSince=undefined;this.last=undefined;this.disarm();}
+  calibrate(g:Gravity,time:number):boolean {
+    this.reset();if(!foreheadPose(g)||!Number.isFinite(time))return false;
+    this.baseline=Math.atan2(g[2],Math.hypot(g[0],g[1]))*180/Math.PI;this.sign=g[0]>=0?1:-1;this.last=time;this.calibrated=true;this.armed=true;return true;
+  }
   disarm():void {this.armed=false;this.neutralSince=undefined;this.pending=undefined;this.pendingSince=undefined;}
   update(x:number,y:number,z:number,time:number):TiltEvent|null {
     const magnitude=Math.hypot(x,y,z);
@@ -20,6 +26,7 @@ export class TiltDetector {
     this.last=time;
     const angle=Math.atan2(z,Math.hypot(x,y))*180/Math.PI;
     if(!this.calibrated){
+      if(!this.automaticCalibration)return null;
       if(!(Math.abs(x)>0.7 && Math.abs(y)<0.35 && Math.abs(angle)<25)){this.candidate=undefined;this.candidateSince=undefined;return null;}
       if(this.candidate!==undefined && Math.abs(angle-this.candidate)<=5 && time-this.candidateSince!>=0.6){this.baseline=angle;this.sign=x>=0?1:-1;this.calibrated=true;this.armed=true;return 'ready';}
       if(this.candidate===undefined || Math.abs(angle-this.candidate)>5){this.candidate=angle;this.candidateSince=time;}

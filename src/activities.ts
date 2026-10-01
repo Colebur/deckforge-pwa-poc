@@ -58,3 +58,12 @@ export class ActivitySession {
     return this.mode === 'random' && this.current ? this.select(random) : this.current;
   }
 }
+
+export interface ActivityPart {kind:'template'|'card';text:string}
+export function activityParts(template:string,cardText:string):ActivityPart[] {
+  const pieces=template.split('{card}'),parts:ActivityPart[]=[];
+  pieces.forEach((text,i)=>{if(i)parts.push({kind:'card',text:cardText});if(text)parts.push({kind:'template',text});});
+  // Plain instructions without a placeholder still keep the selected card visible.
+  if(pieces.length===1)parts.push({kind:'template',text:'\n'},{kind:'card',text:cardText});
+  return parts;
+}

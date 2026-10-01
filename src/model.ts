@@ -86,3 +86,9 @@ export class Round {
     return next;
   }
 }
+
+const deckNames = new Intl.Collator(undefined, {sensitivity:'base',numeric:true});
+// Sort a view, never the stored collection or the order of cards inside a deck.
+export function alphabeticalDecks<T extends {name:string}>(decks:readonly T[]):T[] {
+  return [...decks].sort((a,b)=>deckNames.compare(a.name,b.name));
+}
