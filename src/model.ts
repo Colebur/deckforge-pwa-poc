@@ -1,8 +1,9 @@
+import type {DeckMetadata} from './modes.js';
 export interface Card { id: string; text: string }
 export interface Activity { id: string; text: string; createdAt: string }
-export interface Deck { id: string; name: string; cards: Card[]; activities: Activity[] }
+export interface Deck extends DeckMetadata { id: string; name: string; cards: Card[]; activities: Activity[] }
 export interface TabooCard extends Card { forbidden: string[] }
-export interface TabooDeck { id: string; name: string; cards: TabooCard[] }
+export interface TabooDeck extends DeckMetadata { id: string; name: string; cards: TabooCard[] }
 export interface Library { tabooDecks?: TabooDeck[]; tabooDuration?: number; tabooTeams?: string[]; decks: Deck[]; duration: number; probe: string | null; teams?: string[]; headbandsDuration?: number }
 export const emptyLibrary = (): Library => ({decks: [], duration: 0, probe: null});
 export function importLines(input: string): string[] {

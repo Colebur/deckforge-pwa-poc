@@ -40,7 +40,7 @@ test('audio-clock plan accelerates continuously, final chunk is rapid, ends prec
  assert.equal(cuePlan(20000,90000).buzzer,20);
 });
 test('v1 data remains intact; v2 backups retain saved teams, Random and Headbands timer',()=>{
- const old={decks:[{id:'d',name:'Original',activities:[],cards}],duration:90,probe:'keep'};assert.deepEqual(decodeState({format:'deckforge-pwa-state',version:1,library:old}),old);
+ const old={decks:[{id:'d',name:'Original',activities:[],deckContext:'both',compatibleModes:['lookup','catchphrase','headbands','prompts'],cards}],duration:90,probe:'keep'};assert.deepEqual(decodeState({format:'deckforge-pwa-state',version:1,library:old}),old);
  const updated={...old,duration:0,teams:['A','B','C'],headbandsDuration:75};assert.deepEqual(parseBackup(exportBackup(updated)).library,updated);
 });
 
