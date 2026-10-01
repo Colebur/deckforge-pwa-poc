@@ -301,3 +301,30 @@ The centralized CSS tokens `--play-accent`, `--work-accent`, `--decks-accent` an
 8. Once cached, switch Airplane Mode on and Wi-Fi off, fully close/reopen, then test the tabs, Jenga and a multi-deck draw. Confirm the standalone safe areas and long Activity prompts remain readable in both orientations. Test Catchphrase/Headbands/Taboo normally, including sound and tilt on the physical phone.
 
 Files changed: src/modes.ts, src/backup.ts, src/app.ts, new src/prompt-session.ts, public/style.css, package.json, this README, tests/activities.test.mjs, tests/backup.test.mjs, tests/games.test.mjs, tests/navigation.test.mjs, tests/taboo.test.mjs and new tests/prompt-session.test.mjs. Production build caches the new session module. No native app files changed.
+
+
+## 0.10.0 — Library, backups and accessibility
+
+The universal Deck Library and separate Taboo library now have name search, exact Play/Work/Both context filters, intended-mode filters, Unassigned, a result count, and Clear Search & Filters. Filters combine, keep alphabetical ordering, and never change stored content or game pickers. They remain during navigation in the current app window and reset when reopening. The library mode filter shows declared assignments; a dormant Jenga assignment can appear here while the game's 54-card gate still prevents playing it.
+
+Backups shows the last full-library export request and the last backup **you confirm saving**. Browsers cannot prove a download was retained in Files, so these are separate. Individual-deck exports do not count as full-library backups. Monthly reminders are opt-in and appear in Decks only while using the app; the first reminder is 30 days after enabling, subsequent reminders are 30 days after the last confirmed backup. Snooze lasts seven days. No push notifications, background scheduling, upload, account or backend is involved. Text backups can also be confirmed after saving them yourself.
+
+Import still defaults to Add copies. Its preview now includes cards, Activities, context and mode assignments, plus matching-name information separated by regular/Taboo format. Replacement shows the current library summary and requires an explicit acknowledgment; the action also checks this guard. Existing atomic restore points are preserved.
+
+Settings includes Larger text and keyboard help. Browser zoom remains allowed. Layouts wrap controls and long text, visible focus survives screen updates, a skip link reaches the main content, and reduced-motion preference disables CSS transitions and scripted smooth editor scrolling. The deck-row ellipsis reveals the same recoverable Delete action as swiping; Escape hides it. It never auto-deletes. Focus rings remain visible inside clipped lists.
+
+Keyboard shortcuts are contextual and only invoke existing visible, enabled controls. They ignore text fields, buttons, menus, editable content, modifiers and held-key repeats. Jenga: Left/Right, R. Prompt presentation: Space to draw. Timed games: Space to pause/resume; Catchphrase Right; Headbands with buttons Down/Up; Taboo Right/Left/V. They never start timed rounds, end rounds or bypass hidden tilt-only buttons.
+
+Preferences live under a separate `preferences` key in the existing IndexedDB state store; no database version or library/backup-format change is required. Missing/malformed preferences have safe defaults. Preferences are device-local and deliberately excluded from deck backups (a restored library must not falsely claim a recent backup confirmation). Core filter/reminder/shortcut helpers in `src/refinements.ts` have no browser dependencies. Storage continues behind the existing storage module; no speculative Capacitor abstraction or unrelated game refactor was added.
+
+Changed files: `src/app.ts`, new `src/refinements.ts`, `src/storage.ts`, `public/index.html`, `public/style.css`, `package.json`, `README.md`, new `tests/refinements.test.mjs`.
+
+### iPhone acceptance checks
+1. Export a backup before updating. Settings → Check for Update; wait, close every DeckForge window, reopen and verify **0.10.0** and Ready/cached offline.
+2. Decks → search part of a deck name; combine Context and Available in. Check the result count, alphabetical order and empty-result explanation. Clear restores all decks. Try the separate Taboo library too. Both is an exact metadata category, not an inclusion of Play/Work.
+3. Open a filtered deck, edit a card/Activity and return. Confirm the filter remains and saved data still works. Try Jenga, Prompt Picker, Catchphrase, Headbands and Taboo normally; picker compatibility is unchanged.
+4. Backups → export the full library, save to Files, then tap I Saved a Full-Library Backup. Confirm the requested and confirmed dates appear. Enable monthly reminders and reopen to verify the switch/date persist. Reminder threshold and snooze have automated clock tests; you need not wait a month to test them.
+5. Choose a backup and expand Preview decks. Confirm counts/Activities/context/modes. Add copies is default. Switch to Replace: it must be disabled until the acknowledgment is checked. Cancel rather than replacing your real library for a test. Add copies can be used if you want an import round-trip; delete test copies afterward using local recovery if needed.
+6. Settings → Larger text. Reopen and confirm it stays enabled. Inspect library, editor, long Activities, game setup/presentation and backup screens in portrait/landscape and light/dark appearance. Browser text zoom should remain usable. Turn on VoiceOver and check labels, reading order, result counts and prompt announcements; physical assistive-technology behavior still needs your acceptance.
+7. Tap a deck’s ellipsis: Delete appears but nothing is deleted until you tap it. With a keyboard, Tab/Enter work, Escape dismisses Delete, the skip link reaches content, and game shortcuts work from main content. Shortcuts must not alter a game while typing.
+8. After offline cache is Ready, enable Airplane Mode and turn Wi-Fi off, fully close/reopen and repeat search, editing, backups and gameplay. Verify local preferences and deck content remain. No native iOS files were changed.

@@ -54,3 +54,15 @@ button.primary{color:var(--primary-ink)}
 .prompt-deck-list small{display:block;font-size:12px;margin-top:3px}
 input[type=checkbox]:disabled{opacity:.5}
 @media(prefers-color-scheme:dark){:root{--play-accent:#ff8699;--play-soft:#351b25;--work-accent:#80b7ff;--work-soft:#142941;--decks-accent:#c5a0ff;--decks-soft:#2c1c43;--primary-ink:#17121f}}
+
+/* Library tools, readable controls and keyboard access. */
+.library-tools{margin:12px 0 18px}.filter-controls{display:grid;grid-template-columns:1fr 1fr;gap:12px}.filter-controls>div{min-width:0}
+.toolbar{flex-wrap:wrap}.game-status,.game-bottom,.answer-bar{flex-wrap:wrap}.answer-buttons{flex-wrap:wrap}.answer-buttons button{flex-basis:80px}
+button,summary{min-height:44px}button{overflow-wrap:anywhere}.prompt,.forbidden-words,.restore-preview{overflow-wrap:anywhere}
+.skip-link{position:fixed;top:8px;left:8px;transform:translateY(-200%);background:var(--panel);color:var(--accent);padding:12px;z-index:100;border:2px solid var(--accent);border-radius:12px}.skip-link:focus{transform:none}
+#app:focus{outline:none}.swipe-front:focus-visible{outline-offset:-4px}.list-panel :focus-visible{outline-offset:-3px}
+body.large-text{font-size:20px}.large-text .menu-row strong{font-size:22px}.large-text .menu-row small,.large-text label,.large-text .muted,.large-text .metric,.large-text .tag{font-size:17px}.large-text input,.large-text select,.large-text textarea{font-size:20px}.large-text h1{font-size:34px}.large-text h2{font-size:25px}.large-text .section-label{font-size:15px}.large-text #main-tabs button{font-size:15px}.large-text .prompt{font-size:clamp(38px,9vw,76px)}.large-text .answer-bar>.quiet{font-size:17px}.large-text .card-text{font-size:20px}
+@media(max-width:380px){.filter-controls{grid-template-columns:1fr}.large-text .answer-bar{gap:6px}.large-text .answer-buttons{flex-basis:100%}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
+.deck-reveal{position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:2;min-width:44px;padding:8px;font-size:24px;color:var(--muted)}.swipe-front{padding-right:64px}.swipe-front .arrow{display:none}
