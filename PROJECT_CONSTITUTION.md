@@ -1,6 +1,6 @@
 # DeckForge project constitution
 
-Recorded from Cole's direction on September 30, 2026. This is project context, not authorization to build the roadmap all at once.
+Project principles recorded September 30, 2026. This is project context, not authorization to build the roadmap all at once.
 
 ## Purpose
 Create or import content once, then reuse it across games and group activities. DeckForge is a general-purpose group activity, party game and facilitator toolkit: closer to “VLC for group activities” than an ad-heavy party game app. Keep it fast, simple, privacy-respecting, highly customizable and usable without accounts. Custom deck creation remains a free core feature. Families, classrooms, casual groups and professional facilitators are all intended audiences. A public-good/FOSS direction is possible; this does not itself select a software license.

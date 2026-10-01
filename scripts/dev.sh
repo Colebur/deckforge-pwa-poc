@@ -1,19 +1,15 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
-# Use ordinary Node if installed, or the runtime already supplied by Codex on this Mac.
-BUNDLED="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies"
+# Optional portable Node location; otherwise use the installed Node.js runtime.
+if [ -n "${DECKFORGE_NODE_DIR:-}" ]; then
+  PATH="$DECKFORGE_NODE_DIR:$PATH"; export PATH
+fi
 if ! command -v node >/dev/null 2>&1; then
-  if [ -x "$BUNDLED/node/bin/node" ]; then
-    PATH="$BUNDLED/node/bin:$PATH"; export PATH
-  else
-    echo "Install Node.js LTS from https://nodejs.org, then run this again."; exit 1
-  fi
+  echo "Install Node.js LTS from https://nodejs.org, then run this again."; exit 1
 fi
 if [ ! -f node_modules/typescript/bin/tsc ]; then
-  if command -v npm >/dev/null 2>&1; then npm install
-  elif [ -x "$BUNDLED/bin/fallback/pnpm" ]; then "$BUNDLED/bin/fallback/pnpm" install
-  else echo "npm is required to install TypeScript."; exit 1; fi
+  npm install
 fi
 node node_modules/typescript/bin/tsc
 node scripts/build.mjs

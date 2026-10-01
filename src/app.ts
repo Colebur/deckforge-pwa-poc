@@ -1,3 +1,7 @@
+import {duplicateGroups,copyDeck,reviewImport,importItems,type ImportReview} from './editor-tools.js';
+import {esc,button,cardDisplay,deckOptions as optionsHtml,pickerEscape as escapeHtml} from './ui.js';
+import {webShare} from './share.js';
+import {webHaptics} from './haptics.js';
 import {filterLibrary,defaultPreferences,backupDue,backupOverlap,gameShortcut,type LibraryFilter,type Preferences} from './refinements.js';
 import {PromptSession} from './prompt-session.js';
 import {MODES,metadata,modeDecks,sectionRoot,type ModeId,type LaunchContext,type DeckMetadata} from './modes.js';
@@ -63,6 +67,33 @@ let gameGeneration=0;
 let wakeLock: WakeLockSentinel | undefined;
 let roundLength = 90000;
 let cardPage = 0;
+let expandedCards=false;
+let bulkDraft='';
+let pendingImport:ImportReview|undefined;
+let skipImportDuplicates=false;
+let presenting=false;
+let presentationControls=true;
+function pagination(total:number):string {
+  if(total<=50)return '';
+  const pages=Math.ceil(total/50);
+  return `${expandedCards?`<p class="muted">All ${total} cards</p>`:`<p class="muted">Page ${cardPage+1} of ${pages}</p><div class="actions"><button data-action="page-prev" ${cardPage===0?'disabled':''}>Previous 50</button><button data-action="page-next" ${cardPage===pages-1?'disabled':''}>Next 50</button></div>`}<div class="actions">${button('expand-cards',expandedCards?'Show 50 at a Time':'Expand All','quiet full')}</div>`;
+}
+function duplicateReport(cards:Deck['cards']):string {
+  const groups=duplicateGroups(cards);
+  return `<details class="panel"><summary>Check duplicate prompts</summary><p class="muted">Matches ignore capitalization and surrounding spaces. Nothing is deleted automatically.</p>${groups.length?groups.map(g=>`<p><strong>${esc(g.text)}</strong> · cards ${g.positions.join(', ')}</p>`).join(''):'<p>No duplicate prompts found.</p>'}</details>`;
+}
+function importPreview():string {
+  if(!pendingImport)return '';
+  return `<section id="import-review" class="panel"><h3>Review Import</h3><p>${pendingImport.items.length} cleaned lines · ${pendingImport.duplicates} duplicates (existing or repeated lines).</p><label class="check"><input id="skip-import-duplicates" type="checkbox" ${skipImportDuplicates?'checked':''}> Skip duplicates</label><p class="muted">Duplicates are kept unless you choose to skip them. Review the cleaned text before saving.</p><ol class="import-preview">${pendingImport.items.map(c=>`<li>${esc(c.text)}${c.forbidden?`<small>${c.forbidden.map(esc).join(' · ')}</small>`:''}</li>`).join('')}</ol>${button('confirm-import','Confirm Import','primary full')}</section>`;
+}
+function presentationToggle():string {
+  return presenting?`<div class="presentation-bar">${button('presentation-controls',presentationControls?'Hide Controls':'Show Controls','quiet')}${presentationControls?button('presentation','Exit Presentation','quiet'):''}</div>`:button('presentation','Presentation View','quiet full');
+}
+function updateActivityPreview():void {
+  const text=app.querySelector<HTMLTextAreaElement>('#activity-text')?.value??'';
+  const card=app.querySelector<HTMLSelectElement>('#preview-card')?.value??app.querySelector<HTMLInputElement>('#preview-card-text')?.value??'Example';
+  const preview=app.querySelector('#activity-preview');if(preview)preview.innerHTML=cardDisplay(card,{text});
+}
 let editingCard: string | undefined;
 let entry: '' | 'new-deck' | 'rename' | 'card' | 'bulk' | 'activity' | 'activity-bulk' = '';
 let saving = false;
@@ -78,24 +109,16 @@ let restoreMode: 'add' | 'replace' = 'add';
 let restorePoint: Recovery | null = null;
 let loadFailure = '';
 let futureData = false;
-const esc = (text: string): string => text.replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]!));
 const deck = (): Deck | undefined => library.decks.find(d=>d.id===selected);
 const uid = (): string => crypto.randomUUID();
 function say(message: string): void { notice.textContent=message; }
-function button(action: string, text: string, cls=''): string { return `<button type="button" data-action="${action}" class="${cls}">${text}</button>`; }
 function destination(target: string, title: string, detail: string, symbol: string): string {
   return `<button class="menu-row" data-route="${target}"><span class="symbol" aria-hidden="true">${symbol}</span><span><strong>${title}</strong>${detail?`<small>${detail}</small>`:''}</span><span class="arrow" aria-hidden="true">›</span></button>`;
 }
 function currentMode():ModeId {return MODES.find(m=>m.id===route)?.id??'catchphrase';}
 function availableDecks(){return modeDecks(library.decks,currentMode(),launchContext,showAllDecks);}
-function deckOptions<T extends DeckMetadata & {id:string;name:string;cards:readonly unknown[]}>(pool:{compatible:T[];other:T[]},value:string|null):string {
-  const option=(d:T)=>`<option value="${esc(d.id)}" ${d.id===value?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`;
-  const labels=[['Recommended for '+(launchContext==='play'?'Play':'Work'),launchContext],['Suited for Both','both'],['Other compatible decks',launchContext==='play'?'work':'play']];
-  return labels.map(([label,context])=>{const decks=pool.compatible.filter(d=>d.deckContext===context);return decks.length?`<optgroup label="${label}">${decks.map(option).join('')}</optgroup>`:'';}).join('')+(showAllDecks&&pool.other.length?`<optgroup label="Other decks — not assigned to this mode">${pool.other.map(option).join('')}</optgroup>`:'');
-}
-function pickerEscape(other:number,compatible:number):string {
-  return `<p class="muted picker-help">${showAllDecks?'Showing all non-empty decks for this card format.':compatible?'Compatible decks, recommended for '+(launchContext==='play'?'Play':'Work')+'.':other?'No compatible decks yet. Show all to try another deck, or edit Available in from Decks.':currentMode()==='lookup'?'Create or edit a deck to contain exactly 54 cards.':'Add cards in Decks to make a deck playable.'}</p>${other?button('toggle-all-decks',showAllDecks?'Show Compatible Decks':`Show All Decks (${other} more)`,'quiet picker-escape'):''}`;
-}
+const deckOptions=(pool:ReturnType<typeof availableDecks>|ReturnType<typeof modeDecks<TabooDeck>>,value:string|null)=>optionsHtml<Deck|TabooDeck>(pool,value,launchContext,showAllDecks);
+const pickerEscape=(other:number,compatible:number)=>escapeHtml(other,compatible,launchContext,showAllDecks,currentMode());
 function picker(): string {
   const pool=availableDecks();
   if(!pool.visible.some(d=>d.id===selected)){selected=pool.visible[0]?.id??'';resetLookup();}
@@ -109,7 +132,9 @@ function render(): void {
   const focusId=active?.id;
   const focusAction=active?.dataset.action;
   document.body.classList.toggle('large-text',preferences.largeText);
-  const playing=(['catchphrase','headbands','taboo'].includes(route) && (calibrating || (!!round && round.phase!=='ended'))) || (route==='prompts' && !!promptDraw); 
+  document.body.classList.toggle('work-presentation',presenting);
+  document.body.classList.toggle('presentation-hidden-controls',presenting&&!presentationControls);
+  const playing=presenting || (['catchphrase','headbands','taboo'].includes(route) && (calibrating || (!!round && round.phase!=='ended'))) || (route==='prompts' && !!promptDraw);
   document.body.dataset.context=section;
   document.body.classList.toggle('playing',playing);
   document.body.classList.toggle('home-screen',route==='home');
@@ -190,24 +215,24 @@ function reorderControls(kind:'card'|'activity',id:string,index:number,total:num
 function renderActivityEditor(d:Deck):void {
   const items=d.activities,editable=items.find(a=>a.id===editingActivity),pages=Math.max(1,Math.ceil(items.length/50));activityPage=Math.min(activityPage,pages-1);
   let form='';
-  if(entry==='activity')form=`<form id="activity-form" class="panel"><h2>${editable?'Edit':'Add'} Activity</h2><label for="activity-text">Activity template</label><textarea id="activity-text" name="text" required placeholder="I feel {card} when...">${esc(editable?.text??'')}</textarea><p class="muted">Use {card} to insert the current card text.</p><div class="form-actions"><button class="primary">Save Activity</button>${button('cancel-edit','Cancel')}${editable?button('delete-activity','Delete Activity','danger'):''}</div>${confirmActivityDelete?`<div class="delete-confirm"><p>Delete this Activity? A local restore point will be saved.</p><div class="form-actions">${button('confirm-delete-activity','Confirm Delete Activity','danger')}${button('cancel-delete-activity','Keep Activity')}</div></div>`:''}</form>`;
-  if(entry==='activity-bulk')form=`<form id="activity-bulk-form" class="panel"><h2>Bulk Paste Activities</h2><label for="activity-bulk">One activity per line</label><textarea id="activity-bulk" name="text" required placeholder="I feel {card} when...&#10;Show {card} with your face.&#10;Draw what {card} looks like."></textarea><p class="muted">Use {card} to insert the current card text. Simple numbered and bulleted prefixes are removed.</p><div class="form-actions"><button class="primary">Import Activities</button>${button('cancel-edit','Cancel')}</div></form>`;
-  app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards · ${items.length} activities</span>${button('back','All Decks')}</div>${editorTabs()}${organization(d,'regular')}<p class="muted">Activities belong to this deck and can be paired with any of its cards in Jenga or Prompt Picker. Use {card} to insert the current card text.</p><div class="actions">${button('add-activity','＋ Add Activity','primary')}${button('activity-bulk','Bulk Paste')}</div>${form}<p class="section-label">ACTIVITIES IN ORDER</p><section class="list-panel">${items.slice(activityPage*50,activityPage*50+50).map((a,i)=>`<div class="card-row ordered-row"><button class="ordered-edit" data-activity-edit="${esc(a.id)}"><span class="number">${activityPage*50+i+1}</span><span class="card-text">${esc(a.text)}</span></button>${reorderControls('activity',a.id,activityPage*50+i,items.length)}</div>`).join('')||'<p class="empty">Add an Activity or paste a list. Your cards stay as they are.</p>'}</section>${pages>1?`<p class="muted">Page ${activityPage+1} of ${pages}</p><div class="actions"><button data-action="activity-page-prev" ${activityPage===0?'disabled':''}>Previous 50</button><button data-action="activity-page-next" ${activityPage===pages-1?'disabled':''}>Next 50</button></div>`:''}`;
+  if(entry==='activity')form=`<form id="activity-form" class="panel"><h2>${editable?'Edit':'Add'} Activity</h2><label for="activity-text">Activity template</label><textarea id="activity-text" name="text" required placeholder="I feel {card} when...">${esc(editable?.text??'')}</textarea><p class="muted">Use {card} to insert the current card text.</p>${d.cards.length?`<label for="preview-card">Preview with card</label><select id="preview-card">${d.cards.map(c=>`<option value="${esc(c.text)}">${esc(c.text)}</option>`).join('')}</select>`:'<label for="preview-card-text">Preview card text</label><input id="preview-card-text" value="Example">'}<div id="activity-preview" class="activity-preview"></div><div class="form-actions"><button class="primary">Save Activity</button>${button('cancel-edit','Cancel')}${editable?button('delete-activity','Delete Activity','danger'):''}</div>${confirmActivityDelete?`<div class="delete-confirm"><p>Delete this Activity? A local restore point will be saved.</p><div class="form-actions">${button('confirm-delete-activity','Confirm Delete Activity','danger')}${button('cancel-delete-activity','Keep Activity')}</div></div>`:''}</form>`;
+  if(entry==='activity-bulk')form=`<form id="activity-bulk-form" class="panel"><h2>Bulk Paste Activities</h2><label for="activity-bulk">One activity per line</label><textarea id="activity-bulk" name="text" required placeholder="I feel {card} when...&#10;Show {card} with your face.&#10;Draw what {card} looks like.">${esc(bulkDraft)}</textarea><p class="muted">Use {card} to insert the current card text. Simple numbered and bulleted prefixes are removed.</p><div class="form-actions"><button class="primary">Review Import</button>${button('cancel-edit','Cancel')}</div></form>`;
+  app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards · ${items.length} activities</span>${button('back','All Decks')}</div>${editorTabs()}${organization(d,'regular')}<p class="muted">Activities belong to this deck and can be paired with any of its cards in Jenga or Prompt Picker. Use {card} to insert the current card text.</p><div class="actions">${button('add-activity','＋ Add Activity','primary')}${button('activity-bulk','Bulk Paste')}</div>${form}${importPreview()}<p class="section-label">ACTIVITIES IN ORDER</p><section class="list-panel">${items.slice(activityPage*50,activityPage*50+50).map((a,i)=>`<div class="card-row ordered-row"><button class="ordered-edit" data-activity-edit="${esc(a.id)}"><span class="number">${activityPage*50+i+1}</span><span class="card-text">${esc(a.text)}</span></button>${reorderControls('activity',a.id,activityPage*50+i,items.length)}</div>`).join('')||'<p class="empty">Add an Activity or paste a list. Your cards stay as they are.</p>'}</section>${pages>1?`<p class="muted">Page ${activityPage+1} of ${pages}</p><div class="actions"><button data-action="activity-page-prev" ${activityPage===0?'disabled':''}>Previous 50</button><button data-action="activity-page-next" ${activityPage===pages-1?'disabled':''}>Next 50</button></div>`:''}`;
 }
 
 function renderEditor(): void {
   const d=deck(); if(!d) { route='library'; render(); return; }
-  if(editorSection==='activities'){renderActivityEditor(d);return;}
+  if(editorSection==='activities'){renderActivityEditor(d);updateActivityPreview();return;}
   const editable=d.cards.find(c=>c.id===editingCard);
   const pages=Math.max(1,Math.ceil(d.cards.length/50)); cardPage=Math.min(cardPage,pages-1);
   let form='';
   if(entry==='rename') form=`<form id="rename" class="panel"><h2>Rename Deck</h2><label for="rename-name">Deck name</label><input id="rename-name" name="name" value="${esc(d.name)}" required maxlength="120"><div class="form-actions"><button class="primary">Save Name</button>${button('cancel-edit','Cancel')}</div></form>`;
   if(entry==='card') form=`<form id="card-form" class="panel"><h2>${editable?'Edit Card':'Add Card'}</h2><label for="card-text">Word or prompt</label><textarea id="card-text" name="text" required>${editable?esc(editable.text):''}</textarea><div class="form-actions"><button class="primary">${editable?'Save Card':'Add Card'}</button>${button('cancel-edit','Cancel')}${editable?button('delete-card','Delete Card','danger'):''}</div></form>`;
-  if(entry==='bulk') form=`<form id="bulk-form" class="panel"><h2>Bulk Paste</h2><p class="muted">One card per line. Simple numbered and bulleted prefixes are removed.</p><label for="bulk-text">Your list</label><textarea id="bulk-text" name="text" placeholder="1. Beyoncé&#10;2. Taylor Swift&#10;• Keanu Reeves"></textarea><p id="bulk-count" class="muted">0 cards ready</p><div class="form-actions"><button class="primary">Import Cards</button>${button('cancel-edit','Cancel')}</div></form>`;
+  if(entry==='bulk') form=`<form id="bulk-form" class="panel"><h2>Bulk Paste</h2><p class="muted">One card per line. Simple numbered and bulleted prefixes are removed.</p><label for="bulk-text">Your list</label><textarea id="bulk-text" name="text" placeholder="1. Beyoncé&#10;2. Taylor Swift&#10;• Keanu Reeves">${esc(bulkDraft)}</textarea><p id="bulk-count" class="muted">${importLines(bulkDraft).length} cards ready</p><div class="form-actions"><button class="primary">Review Import</button>${button('cancel-edit','Cancel')}</div></form>`;
   app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards</span>${button('back','All Decks')}</div>${editorTabs()}${organization(d,'regular')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Bulk Paste')}</div>
-    ${form}<p class="section-label">CARDS IN ORDER</p><section class="list-panel">${d.cards.slice(cardPage*50,cardPage*50+50).map((c,i)=>`<div class="card-row ordered-row"><button class="ordered-edit" data-edit="${esc(c.id)}"><span class="number">${cardPage*50+i+1}</span><span class="card-text">${esc(c.text)}</span></button>${reorderControls('card',c.id,cardPage*50+i,d.cards.length)}</div>`).join('') || '<p class="empty">No cards yet.</p>'}</section>
-    ${pages>1?`<p class="muted">Page ${cardPage+1} of ${pages}</p><div class="actions"><button data-action="page-prev" ${cardPage===0?'disabled':''}>Previous 50</button><button data-action="page-next" ${cardPage===pages-1?'disabled':''}>Next 50</button></div>`:''}
-    <details class="panel"><summary>Deck options</summary><div class="option-list">${button('rename-deck','Rename Deck')}${button('backup-deck','Back Up This Deck')}${button('delete-deck','Delete Deck','danger')}</div></details>`;
+    ${form}${importPreview()}<p class="section-label">CARDS IN ORDER</p><section class="list-panel">${d.cards.slice(expandedCards?0:cardPage*50,expandedCards?undefined:cardPage*50+50).map((c,i)=>`<div class="card-row ordered-row"><button class="ordered-edit" data-edit="${esc(c.id)}"><span class="number">${(expandedCards?0:cardPage*50)+i+1}</span><span class="card-text">${esc(c.text)}</span></button>${reorderControls('card',c.id,(expandedCards?0:cardPage*50)+i,d.cards.length)}</div>`).join('') || '<p class="empty">No cards yet.</p>'}</section>
+    ${pagination(d.cards.length)}${duplicateReport(d.cards)}
+    <details class="panel"><summary>Deck options</summary><div class="option-list">${button('duplicate-deck','Duplicate Deck')}${button('rename-deck','Rename Deck')}${button('backup-deck','Back Up This Deck')}${button('delete-deck','Delete Deck','danger')}</div></details>`;
 }
 function resetLookup():void {
   lookupIndex=null;activityMode='none';fixedActivityId='';lookupActivity=undefined;
@@ -223,9 +248,6 @@ function selectLookupCard(index:number):void {
   if(!lookupActivity)configureLookup();
   lookupIndex=index;lookupActivity!.select();render();say('');
 }
-function cardDisplay(text:string,activity?:{text:string}):string {
-  return activity?`<span>${activityParts(activity.text,text).map(part=>part.kind==='card'?`<strong>${esc(part.text)}</strong>`:`<em>${esc(part.text)}</em>`).join('')}</span>`:esc(text);
-}
 function activityChoices(id:string,value:ActivityMode):string {
   return `<label for="${id}">Activity mode</label><select id="${id}">${[['none','None — card only'],['fixed','Fixed / Choose One'],['random','Random'],['cycle','Cycle — in list order']].map(([key,label])=>`<option value="${key}" ${value===key?'selected':''}>${label}</option>`).join('')}</select>`;
 }
@@ -236,7 +258,7 @@ function renderLookup(): void {
   const setup=d?.activities.length?`${activityChoices('activity-mode',activityMode)}${activityMode==='fixed'?`<label for="fixed-activity">Use this Activity</label><select id="fixed-activity">${d.activities.map((a,i)=>`<option value="${esc(a.id)}" ${a.id===fixedActivityId?'selected':''}>${i+1}. ${esc(a.text)}</option>`).join('')}</select>`:''}`:'';
   app.innerHTML=`<section class="panel compact lookup-setup">${choose}${setup}</section>${d?.cards.length?`
     <form id="lookup-form" class="number-form"><label for="item-number">Block number · 1–54</label><div class="row"><input id="item-number" name="number" type="text" inputmode="numeric" pattern="[0-9]+" value="${lookupIndex===null?'':lookupIndex+1}" required><button class="narrow primary">Show</button></div></form>
-    <section class="panel lookup-display"><span class="tag">${lookupIndex===null?'Choose a number':`Card ${lookupIndex+1} of ${d.cards.length}`}</span><div class="prompt ${current&&activity?'composed-activity':''}" aria-live="polite">${current?cardDisplay(current.text,activity):'Ready when you are'}</div>${current&&activityMode==='random'&&d.activities.length>1?button('reroll-activity','↻ Reroll Activity','quiet full'):''}<div class="row"><button data-action="lookup-prev" ${lookupIndex===0?'disabled':''}>Previous</button><button data-action="lookup-next" ${lookupIndex===d.cards.length-1?'disabled':''}>Next</button>${button('lookup-random','Random')}</div></section>`:''}`;
+    <section class="panel lookup-display"><span class="tag">${lookupIndex===null?'Choose a number':`Card ${lookupIndex+1} of ${d.cards.length}`}</span><div class="prompt ${current&&activity?'composed-activity':''}" aria-live="polite"><div class="prompt-content">${current?cardDisplay(current.text,activity):'Ready when you are'}</div></div>${current&&activityMode==='random'&&d.activities.length>1?button('reroll-activity','↻ Reroll Activity','quiet full'):''}<div class="row"><button data-action="lookup-prev" ${lookupIndex===0?'disabled':''}>Previous</button><button data-action="lookup-next" ${lookupIndex===d.cards.length-1?'disabled':''}>Next</button>${button('lookup-random','Random')}</div></section>${current?presentationToggle():''}`:''}`;
 }
 function renderPrompts(): void {
   const pool=availableDecks(),playable=pool.visible;
@@ -245,7 +267,7 @@ function renderPrompts(): void {
   const chosen=playable.filter(d=>promptIds!.has(d.id));
   if(promptDraw){
     const activity=promptSession?.activity;
-    app.innerHTML=`<section class="game active-game prompt-picker"><div class="game-status"><span class="tag">${esc(promptDraw.deck.name)}</span><span class="tag">${chosen.length} selected decks</span></div><div class="prompt ${activity?'composed-activity':''}" aria-live="polite">${cardDisplay(promptDraw.card.text,activity)}</div><div class="game-controls">${activity&&promptActivityMode==='random'&&promptDraw.deck.activities.length>1?button('prompt-reroll','↻ Reroll Activity','quiet full'):''}<div class="answer-bar">${button('prompt-choose','Setup','quiet')}${button('prompt-draw','Draw Again','primary next-card')}${button('home','Work','quiet')}</div></div></section>`;return;
+    app.innerHTML=`<section class="game active-game prompt-picker"><div class="game-status"><span class="tag">${esc(promptDraw.deck.name)}</span><span class="tag">${chosen.length} selected decks</span></div><div class="prompt ${activity?'composed-activity':''}" aria-live="polite">${cardDisplay(promptDraw.card.text,activity)}</div><div class="game-controls">${activity&&promptActivityMode==='random'&&promptDraw.deck.activities.length>1?button('prompt-reroll','↻ Reroll Activity','quiet full'):''}<div class="answer-bar">${button('prompt-choose','Setup','quiet')}${button('prompt-draw','Draw Again','primary next-card')}${button('home','Work','quiet')}</div></div></section>${presentationToggle()}`;return;
   }
   const withActivities=chosen.filter(d=>d.activities.length);
   app.innerHTML=`<section class="panel"><h2>Choose decks</h2>${playable.length?`<label for="prompt-search">Find a deck</label><input id="prompt-search" type="search" value="${esc(promptSearch)}" placeholder="Search deck names"><div class="actions">${button('prompt-select-all','Select Compatible')}${button('prompt-clear','Clear')}</div><fieldset class="prompt-deck-list" aria-label="Prompt decks">${playable.map(d=>`<label class="check" data-prompt-name="${esc(d.name.toLocaleLowerCase())}" ${d.name.toLocaleLowerCase().includes(promptSearch.toLocaleLowerCase())?'':'hidden'}><input type="checkbox" data-prompt-id="${esc(d.id)}" ${promptIds!.has(d.id)?'checked':''}><span>${esc(d.name)}<small>${d.cards.length} cards · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</small></span></label>`).join('')}</fieldset>`:'<p>No eligible decks yet.</p>'}${pickerEscape(pool.other.length,pool.compatible.length)}<p class="muted">${chosen.length} decks selected · each deck has an equal chance.</p>${withActivities.length?`${activityChoices('prompt-activity-mode',promptActivityMode)}${promptActivityMode==='fixed'?withActivities.map(d=>`<label for="prompt-fixed-${esc(d.id)}">${esc(d.name)} Activity</label><select id="prompt-fixed-${esc(d.id)}" data-prompt-fixed="${esc(d.id)}">${d.activities.map(a=>`<option value="${esc(a.id)}" ${(promptFixed[d.id]??d.activities[0]?.id)===a.id?'selected':''}>${esc(a.text)}</option>`).join('')}</select>`).join(''):''}<p class="muted">Activities always come from the card’s source deck. Decks without Activities show the card alone.</p>`:''}<button type="button" data-action="prompt-draw" class="primary full" ${chosen.length?'':'disabled'}>Draw a Prompt</button></section><details class="panel"><summary>How to use</summary><p>Draw for group discussion, acting, drawing or guessing. Select one or more decks. Each deck has an equal chance, regardless of size. Random and Cycle Activities keep separate state for each source deck; Fixed lets you choose one per deck.</p></details>`;
@@ -287,8 +309,8 @@ function renderTabooEditor():void{
   let form='';
   if(entry==='rename')form=`<form id="taboo-rename-form" class="panel"><label for="taboo-name">Deck name</label><input id="taboo-name" name="name" value="${esc(d.name)}" required maxlength="120"><div class="form-actions"><button class="primary">Save Name</button>${button('cancel-edit','Cancel')}</div></form>`;
   if(entry==='card')form=`<form id="taboo-card-form" class="panel"><h2>${c?'Edit':'Add'} Taboo Card</h2><label for="taboo-answer">Answer</label><input id="taboo-answer" name="text" value="${esc(c?.text??'')}" required>${Array.from({length:5},(_,i)=>`<label for="forbidden-${i}">Forbidden word ${i+1}</label><input id="forbidden-${i}" name="forbidden-${i}" value="${esc(c?.forbidden[i]??'')}" required>`).join('')}<div class="form-actions"><button class="primary">Save Card</button>${button('cancel-edit','Cancel')}${c?button('taboo-delete-card','Delete','danger'):''}</div></form>`;
-  if(entry==='bulk')form=`<form id="taboo-bulk-form" class="panel"><h2>Paste Taboo Cards</h2><p class="muted">One card per line. Separate the answer and five forbidden words with |.</p><label for="taboo-bulk">Cards</label><textarea id="taboo-bulk" name="text" required placeholder="Astronaut | Space | NASA | Rocket | Moon | Helmet"></textarea><p class="muted">Every line is checked before any cards are saved.</p><div class="form-actions"><button class="primary">Import Cards</button>${button('cancel-edit','Cancel')}</div></form>`;
-  app.innerHTML=`<div class="toolbar">${button('taboo-library','‹ Taboo Decks')}<span class="muted">${d.cards.length} cards</span></div>${organization(d,'taboo')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Paste a List')}</div>${form}<section class="list-panel">${d.cards.slice(cardPage*50,cardPage*50+50).map(c=>`<button class="menu-row" data-taboo-edit="${esc(c.id)}"><span><strong>${esc(c.text)}</strong><small>${c.forbidden.map(esc).join(' · ')}</small></span><span class="arrow">›</span></button>`).join('')||'<p class="empty">Add an answer and five forbidden words.</p>'}</section>${pages>1?`<p class="muted">Page ${cardPage+1} of ${pages}</p><div class="actions"><button data-action="page-prev" ${cardPage===0?'disabled':''}>Previous 50</button><button data-action="page-next" ${cardPage===pages-1?'disabled':''}>Next 50</button></div>`:''}<details class="panel"><summary>Deck options</summary><div class="option-list">${button('rename-deck','Rename Deck')}${button('taboo-backup','Back Up This Deck')}${button('taboo-delete','Delete Deck','danger')}</div></details>`;
+  if(entry==='bulk')form=`<form id="taboo-bulk-form" class="panel"><h2>Paste Taboo Cards</h2><p class="muted">One card per line. Separate the answer and five forbidden words with |.</p><label for="taboo-bulk">Cards</label><textarea id="taboo-bulk" name="text" required placeholder="Astronaut | Space | NASA | Rocket | Moon | Helmet">${esc(bulkDraft)}</textarea><p class="muted">Every line is checked before any cards are saved.</p><div class="form-actions"><button class="primary">Review Import</button>${button('cancel-edit','Cancel')}</div></form>`;
+  app.innerHTML=`<div class="toolbar">${button('taboo-library','‹ Taboo Decks')}<span class="muted">${d.cards.length} cards</span></div>${organization(d,'taboo')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Paste a List')}</div>${form}${importPreview()}<section class="list-panel">${d.cards.slice(expandedCards?0:cardPage*50,expandedCards?undefined:cardPage*50+50).map(c=>`<button class="menu-row" data-taboo-edit="${esc(c.id)}"><span><strong>${esc(c.text)}</strong><small>${c.forbidden.map(esc).join(' · ')}</small></span><span class="arrow">›</span></button>`).join('')||'<p class="empty">Add an answer and five forbidden words.</p>'}</section>${pagination(d.cards.length)}${duplicateReport(d.cards)}<details class="panel"><summary>Deck options</summary><div class="option-list">${button('duplicate-deck','Duplicate Deck')}${button('rename-deck','Rename Deck')}${button('taboo-backup','Back Up This Deck')}${button('taboo-delete','Delete Deck','danger')}</div></details>`;
 }
 function renderTaboo():void{
   const pool=modeDecks(library.tabooDecks??[],'taboo',launchContext,showAllDecks),playable=pool.visible;
@@ -317,8 +339,8 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.10.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
-    <p class="section-label">EXPERIMENT</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section><p class="muted footnote">Separate PWA experiment. Your native DeckForge app is unchanged.</p>`;
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.11.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
   app.innerHTML=`<section class="panel"><h2>Your saved data needs attention</h2><p class="error">${esc(loadFailure)}</p><p>No empty library was saved over your data.</p>${!futureData?button('backups','Open Backups','primary'):''}${button('reload','Try Reopening')}</section>`;
@@ -331,7 +353,7 @@ function renderLab(): void {
     <details class="panel diagnostic"><summary>Storage survives reopening</summary>${metric('Saved test marker',library.probe ?? 'No marker saved yet','probe')}${metric('Persistence protection',storageMode,'storage-mode')}<p class="muted">Save a marker, fully close the Home Screen app, then reopen. The exact marker and your decks should remain.</p><div class="row">${button('save-probe','Save Test Marker','primary')}${button('storage','Check / Request Persistence')}</div><p></p>${button('backups','Backups')}<p class="muted">Export backups and restore copies from Backups.</p></details>
     <details class="panel diagnostic"><summary>Motion & orientation</summary>${metric('Permission / sensor status',sensors.status,'sensor-status')}${metric('Readings',sensors.angles,'angles')}${metric('Acceleration including gravity',sensors.gravity,'gravity')}${metric('Events / rate / freshness','Not listening','sensor-count')}<div class="row">${button('sensors','Enable Sensors','primary')}${button('stop-sensors','Stop Sensors')}</div><p class="muted">Allow permission, turn sideways both ways, then tip the screen up and down. Values should change smoothly. Repeat after closing/reopening and after leaving the app. Headbands gameplay is available from Home.</p></details>
     <details class="panel diagnostic"><summary>Audio & background loop</summary><div class="row">${button('tone','Play Soft Tone','primary')}${button('start-loop','Start Loop')}${button('stop-audio','Stop Audio')}</div><label class="check"><input type="checkbox" id="round-loop" ${loopForRound?'checked':''}> Add test loop during Catchphrase</label><label class="check"><input type="checkbox" id="show-countdown" ${showCountdown?'checked':''}> Show countdown for testing</label><label class="check"><input type="checkbox" id="background-audio" ${audio.keepInBackground?'checked':''}> Keep the loop requested when hidden (test only)</label>${metric('Loop state','Not started','audio-status')}<p class="muted">Start the loop with a tap. Listen for 30 seconds during a round. To test background behavior, enable the option, switch apps or lock the phone, then return. Note any interruption; “playing” does not prove audible sound.</p><pre id="audio-events">No audio events yet.</pre></details>
-    <details class="panel diagnostic"><summary>Haptic / vibration</summary>${metric('Vibration API',typeof navigator.vibrate === 'function'?'Available · feeling it is the real test':'Unavailable in this browser')}${button('vibrate','Test Vibration')}<p class="muted">Unavailable vibration is a platform limitation, not a deck-game failure.</p></details>`;
+    <details class="panel diagnostic"><summary>Haptic / vibration</summary>${metric('Vibration API',webHaptics.available()?'Available · feeling it is the real test':'Unavailable in this browser')}${button('vibrate','Test Vibration')}<p class="muted">Unavailable vibration is a platform limitation, not a deck-game failure.</p></details>`;
   updateLab();
 }
 async function mutate(change: (next: Library)=>void, checkpoint=false): Promise<void> {
@@ -348,23 +370,16 @@ function navigate(target: string,nextSection?:typeof section): void {
   if(['library','editor','taboo-library','taboo-editor'].includes(target))section='decks';
   if(MODES.some(m=>m.id===target)){launchContext=(target==='lookup'||target==='prompts'||section==='work')?'work':'play';section=launchContext;showAllDecks=false;selected='';tabooSelected='';promptIds=undefined;promptSearch='';promptActivityMode='none';promptFixed={};promptSession=undefined;}
   gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
-  revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); app.focus({preventScroll:true});window.scrollTo({top:0});
+  presenting=false;presentationControls=true;expandedCards=false;pendingImport=undefined;bulkDraft='';revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); app.focus({preventScroll:true});window.scrollTo({top:0});
 }
 function openEntry(next: typeof entry): void {
-  confirmActivityDelete=false;entry=next; render(); app.querySelector<HTMLElement>('form:not(#organization-form) input,form:not(#organization-form) textarea')?.focus();
+  pendingImport=undefined;bulkDraft='';skipImportDuplicates=false;confirmActivityDelete=false;entry=next; render(); app.querySelector<HTMLElement>('form:not(#organization-form) input,form:not(#organization-form) textarea')?.focus();
 }
-async function downloadBackup(value: Library,fullLibrary=false): Promise<void> {
-  const record=async()=>{if(fullLibrary)await setPreferences(next=>{next.lastExport=new Date().toISOString();});};
-  const name=`DeckForge-backup-${new Date().toISOString().slice(0,10)}.json`;
-  const contents=exportBackup(value);
-  const file=new File([contents],name,{type:'application/json'});
-  if(navigator.canShare?.({files:[file]}) && navigator.share) {
-    try { await navigator.share({files:[file],title:'DeckForge Backup'}); await record();say('Backup shared. Keep a copy in Files or iCloud Drive, then confirm saving it.'); return; }
-    catch(error) { if(error instanceof DOMException && error.name==='AbortError') return; }
-    // Some embedded browsers advertise sharing but reject it. Still offer a file.
-  }
-  const url=URL.createObjectURL(file), a=document.createElement('a'); a.href=url; a.download=name; document.body.append(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),60000); await record();say('Backup download requested. Keep the file somewhere safe.');
+async function downloadBackup(value:Library,fullLibrary=false):Promise<void>{
+  const result=await webShare.saveFile(exportBackup(value),`DeckForge-backup-${new Date().toISOString().slice(0,10)}.json`);
+  if(result==='canceled')return;
+  if(fullLibrary)await setPreferences(next=>{next.lastExport=new Date().toISOString();});
+  say(result==='shared'?'Backup shared. Keep a copy in Files or another safe location, then confirm saving it.':'Backup download requested. Keep the file somewhere safe.');
 }
 async function storageProtection(request: boolean): Promise<void> {
   try {
@@ -381,7 +396,12 @@ async function action(name: string): Promise<void> {
   const d=deck();
   if(name.startsWith('award-')){const index=name==='award-none'?null:Number(name.slice(6));if(match?.award(index))render();return;}
   switch(name) {
-    case 'editor-cards':case 'editor-activities':confirmActivityDelete=false;editorSection=name==='editor-cards'?'cards':'activities';entry='';editingCard=undefined;editingActivity=undefined;render();break;
+    case 'expand-cards':expandedCards=!expandedCards;cardPage=0;render();break;
+    case 'presentation':presenting=!presenting;presentationControls=true;render();break;
+    case 'presentation-controls':presentationControls=!presentationControls;render();break;
+    case 'duplicate-deck':{const source=route==='taboo-editor'?tabooDeck():d;if(!source)break;const names=(route==='taboo-editor'?library.tabooDecks??[]:library.decks).map(x=>x.name);const copy=copyDeck(source,names,uid);await mutate(next=>{if('activities' in copy)next.decks.push(copy);else(next.tabooDecks??=[]).push(copy);});if('activities' in copy)selected=copy.id;else tabooSelected=copy.id;expandedCards=false;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';render();say('Independent copy saved. The original deck is unchanged.');break;}
+    case 'confirm-import':{const review=pendingImport;if(!review)break;const target=review.kind==='taboo'?tabooDeck():d;if(!target||target.id!==review.deckId)throw new Error('Reopen import for this deck.');const existing=review.kind==='activities'?(target as Deck).activities:target.cards;const items=importItems(review,existing,skipImportDuplicates);if(!items.length){say('No new lines to import. Uncheck Skip duplicates to keep them.');break;}await mutate(next=>{if(review.kind==='taboo'){const t=next.tabooDecks!.find(x=>x.id===target.id)!;items.forEach(c=>t.cards.push({id:uid(),text:c.text,forbidden:c.forbidden!}));}else{const t=next.decks.find(x=>x.id===target.id)!;if(review.kind==='activities'){const createdAt=new Date().toISOString();items.forEach(c=>t.activities.push({id:uid(),text:c.text,createdAt}));}else items.forEach(c=>t.cards.push({id:uid(),text:c.text}));}});pendingImport=undefined;bulkDraft='';entry='';render();say(`${items.length} ${review.kind==='activities'?'activities':'cards'} saved.`);break;}
+    case 'editor-cards':case 'editor-activities':pendingImport=undefined;bulkDraft='';confirmActivityDelete=false;editorSection=name==='editor-cards'?'cards':'activities';entry='';editingCard=undefined;editingActivity=undefined;render();break;
     case 'add-activity':editingActivity=undefined;openEntry('activity');break;
     case 'activity-bulk':openEntry('activity-bulk');break;
     case 'activity-page-prev':activityPage--;render();break;
@@ -413,14 +433,14 @@ async function action(name: string): Promise<void> {
     case 'delete-card': if(d && editingCard && confirm('Delete this card?')) {
       const id=editingCard; await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;target.cards=target.cards.filter(c=>c.id!==id);},true); editingCard=undefined;entry='';restorePoint=await recovery();render();say('Card deleted. A local restore point was saved.');
     } break;
-    case 'cancel-edit': confirmActivityDelete=false;editingActivity=undefined;editingCard=undefined; entry=''; render(); break;
+    case 'cancel-edit': pendingImport=undefined;bulkDraft='';confirmActivityDelete=false;editingActivity=undefined;editingCard=undefined; entry=''; render(); break;
     case 'page-prev': cardPage--; render(); break;
     case 'page-next': cardPage++; render(); break;
     case 'prompt-draw': if(!promptSession)promptSession=new PromptSession(availableDecks().visible.filter(d=>promptIds?.has(d.id)),promptActivityMode,promptFixed);promptDraw=promptSession.draw();render();if(promptDraw)window.scrollTo({top:0});break;
     case 'prompt-reroll':promptSession?.reroll();render();break;
     case 'prompt-select-all':promptIds=new Set(availableDecks().compatible.map(d=>d.id));promptSession=undefined;render();break;
     case 'prompt-clear':promptIds=new Set();promptSession=undefined;render();break;
-    case 'prompt-choose': promptDraw=undefined;promptSession=undefined;render();break;
+    case 'prompt-choose': presenting=false;promptDraw=undefined;promptSession=undefined;render();break;
     case 'prompt-library': navigate('library');break;
     case 'lookup-prev': if(d?.cards.length)selectLookupCard(lookupIndex===null?0:Math.max(0,lookupIndex-1));break;
     case 'lookup-next': if(d?.cards.length)selectLookupCard(lookupIndex===null?0:Math.min(d.cards.length-1,lookupIndex+1));break;
@@ -458,7 +478,7 @@ async function action(name: string): Promise<void> {
     case 'snooze-backup':await setPreferences(next=>{next.snoozedUntil=new Date(Date.now()+7*24*60*60*1000).toISOString();});break;
     case 'clear-library-filters':{const kind=route==='taboo-library'?'taboo':'regular';libraryFilters[kind]={search:'',context:'all',mode:'all'};revealedDeck='';render();break;}
     case 'backup-text': showBackupText=true;render();break;
-    case 'copy-backup': await navigator.clipboard.writeText(document.querySelector<HTMLTextAreaElement>('#backup-json')!.value);say('Backup text copied. Save it as a .json file.');break;
+    case 'copy-backup': await webShare.copyText(document.querySelector<HTMLTextAreaElement>('#backup-json')!.value);say('Backup text copied. Save it as a .json file.');break;
     case 'backup-deck': if(d) await downloadBackup({...library,decks:[d],tabooDecks:[]}); break;
     case 'cancel-restore': pendingBackup=undefined;backupFilename='';render();break;
     case 'restore-backup': if(pendingBackup) {
@@ -473,7 +493,7 @@ async function action(name: string): Promise<void> {
     case 'tone': await audio.playTone(); updateLab(); say('Tone playback requested. Confirm you hear it.'); break;
     case 'start-loop': await audio.startLoop(); updateLab(); break;
     case 'stop-audio': audio.stop(); updateLab(); break;
-    case 'vibrate': say(typeof navigator.vibrate==='function' ? `Vibration request ${navigator.vibrate([100,60,100])?'accepted':'rejected'}. Did you feel it?` : 'Vibration unavailable in this browser.'); break;
+    case 'vibrate': say(webHaptics.available() ? `Vibration request ${webHaptics.test()?'accepted':'rejected'}. Did you feel it?` : 'Vibration unavailable in this browser.'); break;
   }
 }
 function audioError(error: unknown): void { audio.log(`Playback failed: ${String(error)}`);say('Sound was interrupted. Pause and Resume to retry timer audio, or use Device Tests.'); }
@@ -487,25 +507,20 @@ async function submit(form: HTMLFormElement): Promise<void> {
       await mutate(next=>{Object.assign((format==='taboo'?next.tabooDecks:next.decks)!.find(d=>d.id===target.id)!,fields);});say('Deck organization saved.');break;
     }
     case 'activity-form':if(!text)throw new Error('Enter an Activity template.');if(d){const id=editingActivity;await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;if(id)target.activities.find(a=>a.id===id)!.text=text;else target.activities.push({id:uid(),text,createdAt:new Date().toISOString()});});entry='';editingActivity=undefined;render();say('Activity saved.');}break;
-    case 'activity-bulk-form':{const lines=importLines(String(data.get('text')??''));if(!lines.length)throw new Error('Paste at least one non-empty Activity.');if(d)await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;const createdAt=new Date().toISOString();for(const text of lines)target.activities.push({id:uid(),text,createdAt});});entry='';render();say(`${lines.length} activities saved.`);break;}
+    case 'activity-bulk-form':case 'taboo-bulk-form':case 'bulk-form':{const kind=form.id==='activity-bulk-form'?'activities':form.id==='taboo-bulk-form'?'taboo':'cards';const target=kind==='taboo'?tabooDeck():d;if(!target)break;bulkDraft=String(data.get('text')??'');pendingImport=reviewImport(kind,target.id,bulkDraft,kind==='activities'?(target as Deck).activities:target.cards);render();document.querySelector('#import-review')?.scrollIntoView({block:'nearest'});say('Review the cleaned lines, then confirm to save.');break;}
 
     case 'taboo-new-form':if(!name)throw new Error('Enter a deck name.');{const id=uid();await mutate(next=>{(next.tabooDecks??=[]).push({id,name,cards:[],...metadata(undefined,undefined,'taboo')});});tabooSelected=id;route='taboo-editor';entry='';cardPage=0;render();say('Taboo deck saved.');break;}
     case 'taboo-rename-form':if(!name)throw new Error('Enter a deck name.');await mutate(next=>{next.tabooDecks!.find(d=>d.id===tabooSelected)!.name=name;});entry='';render();break;
     case 'taboo-card-form':{const value=validateTabooCard(text,Array.from({length:5},(_,i)=>String(data.get('forbidden-'+i)??'').trim()));await mutate(next=>{const d=next.tabooDecks!.find(d=>d.id===tabooSelected)!;if(editingCard)Object.assign(d.cards.find(c=>c.id===editingCard)!,value);else d.cards.push({id:uid(),...value});});entry='';editingCard=undefined;render();say('Taboo card saved.');break;}
-    case 'taboo-bulk-form':{const cards=importTaboo(String(data.get('text')??''));await mutate(next=>{const target=next.tabooDecks!.find(d=>d.id===tabooSelected)!;for(const card of cards)target.cards.push({id:uid(),...card});});entry='';render();say(`${cards.length} Taboo cards saved.`);break;}
     case 'taboo-round-form':{const d=tabooDeck();if(!d||preparing)break;const names=teamNames(tabooTeams),duration=tabooDuration;roundSeconds(duration);const token=++gameGeneration;preparing=true;const sound=readyAudio();render();try{await Promise.all([sound,mutate(next=>{next.tabooTeams=names;next.tabooDuration=duration;})]);if(token!==gameGeneration||document.hidden)return;tabooMatch=new TabooGame(d.cards,names,duration);round=tabooMatch.start(performance.now());startCues();}finally{preparing=false;render();}break;}
 
     case 'new-deck': if(!name) throw new Error('Enter a deck name.'); {
-      const id=uid();await mutate(next=>next.decks.push({id,name,cards:[],activities:[],...metadata(undefined,MODES.filter(m=>m.format==='regular'&&m.id!=='lookup').map(m=>m.id),'regular')}));selected=id;route='editor';editorSection='cards';cardPage=0;entry='';render();say('Deck saved.');break;
+      const id=uid();await mutate(next=>next.decks.push({id,name,cards:[],activities:[],...metadata(undefined,MODES.filter(m=>m.format==='regular'&&m.id!=='lookup').map(m=>m.id),'regular')}));selected=id;route='editor';editorSection='cards';cardPage=0;expandedCards=false;pendingImport=undefined;entry='';render();say('Deck saved.');break;
     }
     case 'rename': if(!name) throw new Error('Enter a deck name.'); if(d) await mutate(next=>{next.decks.find(x=>x.id===d.id)!.name=name;});entry='';render();say('Name saved.');break;
     case 'card-form': if(!text) throw new Error('Enter a word or prompt.');if(d) {
       await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;if(editingCard) target.cards.find(c=>c.id===editingCard)!.text=text;else target.cards.push({id:uid(),text});});editingCard=undefined;entry='';render();say('Card saved.');
     } break;
-    case 'bulk-form': {
-      const lines=importLines(String(data.get('text') ?? ''));if(!lines.length) throw new Error('Paste at least one non-empty line.');
-      if(d) await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;for(const text of lines)target.cards.push({id:uid(),text});});entry='';render();say(`${lines.length} cards saved.`);break;
-    }
     case 'lookup-form':if(d?.cards.length===54)selectLookupCard(lookup(d.cards,String(data.get('number'))));break;
     case 'round-form': if(d && !preparing){
       const names=teamNames(draftTeams),duration=draftDuration;roundSeconds(duration);
@@ -522,8 +537,10 @@ async function submit(form: HTMLFormElement): Promise<void> {
   }
 }
 app.addEventListener('submit',event=>{event.preventDefault();if(event.target instanceof HTMLFormElement) void submit(event.target).catch(error=>say(`Could not save: ${String(error)}`));});
-app.addEventListener('input',event=>{if(event.target instanceof HTMLInputElement&&event.target.id==='library-search'){libraryFilters[route==='taboo-library'?'taboo':'regular'].search=event.target.value;revealedDeck='';updateLibraryResults();}if(event.target instanceof HTMLInputElement&&event.target.id==='prompt-search'){promptSearch=event.target.value;const term=promptSearch.toLocaleLowerCase();app.querySelectorAll<HTMLElement>('[data-prompt-name]').forEach(el=>{el.hidden=!el.dataset.promptName!.includes(term);});}if(event.target instanceof HTMLInputElement&&event.target.dataset.tabooTeam!==undefined)tabooTeams[Number(event.target.dataset.tabooTeam)]=event.target.value;if(event.target instanceof HTMLInputElement && event.target.dataset.team!==undefined)draftTeams[Number(event.target.dataset.team)]=event.target.value;if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent=`${importLines(event.target.value).length} cards ready`;});
+app.addEventListener('input',event=>{if(event.target instanceof HTMLTextAreaElement&&['bulk-text','activity-bulk','taboo-bulk'].includes(event.target.id)){bulkDraft=event.target.value;pendingImport=undefined;document.querySelector('#import-review')?.remove();}if(event.target instanceof HTMLElement&&['activity-text','preview-card-text'].includes(event.target.id))updateActivityPreview();if(event.target instanceof HTMLInputElement&&event.target.id==='library-search'){libraryFilters[route==='taboo-library'?'taboo':'regular'].search=event.target.value;revealedDeck='';updateLibraryResults();}if(event.target instanceof HTMLInputElement&&event.target.id==='prompt-search'){promptSearch=event.target.value;const term=promptSearch.toLocaleLowerCase();app.querySelectorAll<HTMLElement>('[data-prompt-name]').forEach(el=>{el.hidden=!el.dataset.promptName!.includes(term);});}if(event.target instanceof HTMLInputElement&&event.target.dataset.tabooTeam!==undefined)tabooTeams[Number(event.target.dataset.tabooTeam)]=event.target.value;if(event.target instanceof HTMLInputElement && event.target.dataset.team!==undefined)draftTeams[Number(event.target.dataset.team)]=event.target.value;if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent=`${importLines(event.target.value).length} cards ready`;});
 app.addEventListener('change',event=>{
+  if(event.target instanceof HTMLInputElement&&event.target.id==='skip-import-duplicates')skipImportDuplicates=event.target.checked;
+  if(event.target instanceof HTMLSelectElement&&event.target.id==='preview-card')updateActivityPreview();
   const el=event.target;
   if(el instanceof HTMLSelectElement&&['library-context','library-mode'].includes(el.id)){const filter=libraryFilters[route==='taboo-library'?'taboo':'regular'];if(el.id==='library-context')filter.context=el.value;else filter.mode=el.value;revealedDeck='';updateLibraryResults();}
   if(el instanceof HTMLInputElement&&el.id==='acknowledge-replace'){replaceAcknowledged=el.checked;const button=app.querySelector<HTMLButtonElement>('[data-action="restore-backup"]');if(button)button.disabled=!replaceAcknowledged;}
@@ -579,15 +596,16 @@ document.addEventListener('click',event=>{
   if(!el.closest('.swipe-deck'))revealDeck('');
   if(el.dataset.tab){const tab=el.dataset.tab as typeof section;navigate(sectionRoot(tab),tab);}
   else if(el.dataset.route) { if(el.dataset.route==='backups') void action('backups').catch(error=>say(String(error)));else navigate(el.dataset.route); }
-  else if(el.dataset.tabooDeck){tabooSelected=el.dataset.tabooDeck;cardPage=0;entry='';editingCard=undefined;route='taboo-editor';section='decks';render();}
+  else if(el.dataset.tabooDeck){tabooSelected=el.dataset.tabooDeck;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';editingCard=undefined;route='taboo-editor';section='decks';render();}
   else if(el.dataset.tabooEdit){editingCard=el.dataset.tabooEdit;openEntry('card');document.querySelector('#taboo-card-form')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
-  else if(el.dataset.deck) {editorSection='cards';editingActivity=undefined;activityPage=0;selected=el.dataset.deck;cardPage=0;entry='';editingCard=undefined;route='editor';section='decks';say('');render();}
+  else if(el.dataset.deck) {editorSection='cards';editingActivity=undefined;activityPage=0;selected=el.dataset.deck;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';editingCard=undefined;route='editor';section='decks';say('');render();}
   else if(el.dataset.activityEdit){editingActivity=el.dataset.activityEdit;openEntry('activity');document.querySelector('#activity-form')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
   else if(el.dataset.activityMove||el.dataset.cardMove){const d=deck(),id=el.dataset.activityMove??el.dataset.cardMove,direction=el.dataset.direction==='-1'?-1:1;if(d&&id&&!entry)void mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;if(el.dataset.activityMove)target.activities=moveItem(target.activities,id,direction);else target.cards=moveItem(target.cards,id,direction);}).then(()=>say('Order saved.')).catch(error=>say(String(error)));}
   else if(el.dataset.edit) {editingCard=el.dataset.edit;openEntry('card');document.querySelector('#card-form')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
   else if(el.dataset.action) void action(el.dataset.action).catch(error=>say(`Could not complete action: ${String(error)}`));
 });
 document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&presenting){presenting=false;render();event.preventDefault();return;}
   if(event.key==='Escape'&&revealedDeck){const row=Array.from(app.querySelectorAll<HTMLElement>('.swipe-deck')).find(row=>row.dataset.swipeKey===revealedDeck);revealDeck('');row?.querySelector<HTMLButtonElement>('.deck-reveal')?.focus();event.preventDefault();return;}
   if(event.defaultPrevented||event.repeat||event.isComposing||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey)return;
   const target=event.target instanceof HTMLElement?event.target:undefined;
