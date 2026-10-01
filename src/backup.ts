@@ -1,3 +1,4 @@
+import {validateActivities} from './activities.js';
 import { type Library } from './model.js';
 import {validateTabooCard} from './taboo.js';
 import {teamNames, TIMER_CHOICES} from './games.js';
@@ -22,7 +23,7 @@ export function validateLibrary(value: unknown): Library {
       cardIDs.add(card.id);
       return {id: card.id, text: card.text};
     });
-    return {id: entry.id, name: entry.name, cards};
+    return {id: entry.id, name: entry.name, cards, activities:validateActivities(entry.activities)};
   });
   const result: Library={decks, duration: value.duration, probe: value.probe};
   if(value.teams!==undefined){if(!Array.isArray(value.teams)||!value.teams.every(v=>typeof v==='string'))throw new Error('Invalid team settings.');result.teams=teamNames(value.teams);}
@@ -46,17 +47,17 @@ export function validateLibrary(value: unknown): Library {
 // Keep the original database/store names. Old POC libraries upgrade without clearing data.
 export function decodeState(value: unknown): Library {
   if (record(value) && value.format === 'deckforge-pwa-state') {
-    if (value.version !== 1 && value.version !== 2 && value.version !== 3) throw new NewerFormatError('This library needs a newer DeckForge update. Your saved data was not changed.');
+    if (value.version !== 1 && value.version !== 2 && value.version !== 3 && value.version !== 4) throw new NewerFormatError('This library needs a newer DeckForge update. Your saved data was not changed.');
     return validateLibrary(value.library);
   }
   return validateLibrary(value);
 }
 export function encodeState(library: Library): object {
-  return {format: 'deckforge-pwa-state', version: 3, library: validateLibrary(library)};
+  return {format: 'deckforge-pwa-state', version: 4, library: validateLibrary(library)};
 }
 export interface BackupPreview { library: Library; source: 'DeckForge PWA' | 'Original PWA backup' | 'Native DeckForge backup' }
 export function exportBackup(library: Library, now = new Date()): string {
-  return JSON.stringify({format: 'deckforge-pwa-backup', version: 3, exportedAt: now.toISOString(), library: validateLibrary(library)}, null, 2);
+  return JSON.stringify({format: 'deckforge-pwa-backup', version: 4, exportedAt: now.toISOString(), library: validateLibrary(library)}, null, 2);
 }
 export function parseBackup(text: string): BackupPreview {
   if (new TextEncoder().encode(text).byteLength > MAX_BACKUP_BYTES) throw new Error('Choose a backup smaller than 20 MB.');
@@ -64,7 +65,7 @@ export function parseBackup(text: string): BackupPreview {
   try { value = JSON.parse(text); } catch { throw new Error('This file is not a valid JSON backup. Nothing was changed.'); }
   if (!record(value)) throw new Error('This is not a DeckForge backup.');
   if (value.format === 'deckforge-pwa-backup') {
-    if (value.version !== 1 && value.version !== 2 && value.version !== 3) throw new NewerFormatError('This backup needs a newer DeckForge update. Nothing was changed.');
+    if (value.version !== 1 && value.version !== 2 && value.version !== 3 && value.version !== 4) throw new NewerFormatError('This backup needs a newer DeckForge update. Nothing was changed.');
     return {library: validateLibrary(value.library), source: 'DeckForge PWA'};
   }
   if (value.format === 'deckforge-pwa-poc-v1') return {library: validateLibrary(value), source: 'Original PWA backup'};
@@ -73,7 +74,7 @@ export function parseBackup(text: string): BackupPreview {
     const decks = value.decks.map(entry => {
       if (!record(entry) || !nonblank(entry.name) || !Array.isArray(entry.cards) || !entry.cards.every(nonblank))
         throw new Error('This native backup contains an invalid deck or card. Nothing was changed.');
-      return {id: crypto.randomUUID(), name: entry.name, cards: entry.cards.map(text => ({id: crypto.randomUUID(), text}))};
+      return {id: crypto.randomUUID(), name: entry.name, activities:[], cards: entry.cards.map(text => ({id: crypto.randomUUID(), text}))};
     });
     return {library: {decks, duration: 90, probe: null}, source: 'Native DeckForge backup'};
   }
@@ -82,7 +83,7 @@ export function parseBackup(text: string): BackupPreview {
 export function restoreBackup(current: Library, incoming: Library, mode: 'add' | 'replace', id = () => crypto.randomUUID()): Library {
   const valid = validateLibrary(incoming);
   // Fresh IDs keep repeated imports separate. Text, duplicate prompts and order stay exact.
-  const copies = valid.decks.map(d => ({id: id(), name: d.name, cards: d.cards.map(c => ({id: id(), text: c.text}))}));
+  const copies = valid.decks.map(d => ({id: id(), name: d.name, activities:d.activities.map(activity=>({...activity,id:id()})), cards: d.cards.map(c => ({id: id(), text: c.text}))}));
   const tabooCopies=(valid.tabooDecks??[]).map(d=>({id:id(),name:d.name,cards:d.cards.map(c=>({id:id(),text:c.text,forbidden:[...c.forbidden]}))}));
   return validateLibrary(mode === 'replace' ? {...valid, decks: copies, tabooDecks:tabooCopies} : {...validateLibrary(current), decks: [...current.decks, ...copies], tabooDecks:[...(current.tabooDecks??[]),...tabooCopies]});
 }

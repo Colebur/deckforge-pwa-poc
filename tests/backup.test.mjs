@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {decodeState, encodeState, exportBackup, parseBackup, restoreBackup, NewerFormatError} from '../dist/backup.js';
 import {CountdownCues, beepInterval} from '../dist/cues.js';
-const library = {decks:[{id:'deck-1',name:'Unicode & duplicates',cards:[{id:'a',text:'Beyoncé'},{id:'b',text:'Beyoncé'},{id:'c',text:'-5 degrees'},{id:'d',text:'<script>just text</script>'}]}],duration:60,probe:'existing-marker'};
+const library = {decks:[{id:'deck-1',name:'Unicode & duplicates',activities:[],cards:[{id:'a',text:'Beyoncé'},{id:'b',text:'Beyoncé'},{id:'c',text:'-5 degrees'},{id:'d',text:'<script>just text</script>'}]}],duration:60,probe:'existing-marker'};
 test('versioned export/restore preserves deck order, duplicate prompts, settings and Unicode',()=>{
   const parsed=parseBackup(exportBackup(library)).library;
   assert.deepEqual(parsed,library);
@@ -12,7 +12,7 @@ test('versioned export/restore preserves deck order, duplicate prompts, settings
 });
 test('old persisted library upgrades without losing IDs or data, new state roundtrips',()=>{
   assert.deepEqual(decodeState(library),library); assert.deepEqual(decodeState(encodeState(library)),library);
-  assert.throws(()=>decodeState({format:'deckforge-pwa-state',version:4,library}),NewerFormatError);
+  assert.throws(()=>decodeState({format:'deckforge-pwa-state',version:5,library}),NewerFormatError);
 });
 test('additive restore is non-mutating and repeated imports have fresh IDs',()=>{
   let sequence=0; const next=restoreBackup(library,library,'add',()=>`copy-${sequence++}`);
@@ -26,11 +26,11 @@ test('original POC and exported native backups are readable',()=>{
 });
 test('bad, partial, duplicate-ID and future backups are rejected before mutation',()=>{
   for(const text of ['{','null','{}',JSON.stringify({format:'other',...library}),JSON.stringify({version:1,decks:[{name:'Oops',cards:['']}]}),JSON.stringify({format:'deckforge-pwa-backup',version:1,library:{...library,decks:[{...library.decks[0],cards:[{id:'a',text:'A'},{id:'a',text:'B'}]}]}})]) assert.throws(()=>parseBackup(text));
-  assert.throws(()=>parseBackup(JSON.stringify({format:'deckforge-pwa-backup',version:4,library})),NewerFormatError);
+  assert.throws(()=>parseBackup(JSON.stringify({format:'deckforge-pwa-backup',version:5,library})),NewerFormatError);
   assert.equal(library.decks.length,1);
 });
 test('2,000-card backup restores every numbered position',()=>{
-  const large={...library,decks:[{id:'large',name:'Large',cards:Array.from({length:2000},(_,i)=>({id:String(i),text:`Item ${i+1}`}))}]};
+  const large={...library,decks:[{id:'large',name:'Large',activities:[],cards:Array.from({length:2000},(_,i)=>({id:String(i),text:`Item ${i+1}`}))}]};
   const restored=parseBackup(exportBackup(large)).library;
   assert.deepEqual(restored,large);assert.equal(restored.decks[0].cards[1999].text,'Item 2000');
 });

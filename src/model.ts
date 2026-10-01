@@ -1,5 +1,6 @@
 export interface Card { id: string; text: string }
-export interface Deck { id: string; name: string; cards: Card[] }
+export interface Activity { id: string; text: string; createdAt: string }
+export interface Deck { id: string; name: string; cards: Card[]; activities: Activity[] }
 export interface TabooCard extends Card { forbidden: string[] }
 export interface TabooDeck { id: string; name: string; cards: TabooCard[] }
 export interface Library { tabooDecks?: TabooDeck[]; tabooDuration?: number; tabooTeams?: string[]; decks: Deck[]; duration: number; probe: string | null; teams?: string[]; headbandsDuration?: number }
