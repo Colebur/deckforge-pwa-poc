@@ -22,6 +22,10 @@ export class GameAudio {
     await Promise.all([resume,this.loading]);
     if(this.context.state!=='running')throw new Error('Sound is interrupted. Tap Resume to retry.');
   }
+  placementCountdown(enabled:boolean):void {
+    this.stopCountdown();const ctx=this.context;if(!enabled||!ctx||ctx.state!=='running')return;
+    for(let i=0;i<3;i++)this.clip('tone',ctx.currentTime+i,0.65,this.nodes,0.14);
+  }
   schedule(remaining:number,length:number,enabled:boolean):void {
     this.stopCountdown();const ctx=this.context;if(!enabled||!ctx||ctx.state!=='running')return;
     const plan=cuePlan(remaining,length), start=ctx.currentTime;

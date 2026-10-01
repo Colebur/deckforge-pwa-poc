@@ -1,6 +1,7 @@
-import {ActivitySession,renderActivity,moveItem,type ActivityMode} from './activities.js';
+import {HeadbandsSetup} from './headbands-setup.js';
+import {ActivitySession,activityParts,moveItem,type ActivityMode} from './activities.js';
 import {importTaboo,validateTabooCard,TabooRound,TabooGame} from './taboo.js';
-import { importLines, randomPrompt, type PromptDraw, lookup, Round, emptyLibrary, type Deck, type TabooDeck, type Library } from './model.js';
+import { alphabeticalDecks, importLines, randomPrompt, type PromptDraw, lookup, Round, emptyLibrary, type Deck, type TabooDeck, type Library } from './model.js';
 import { load, save, recovery, type Recovery } from './storage.js';
 import { exportBackup, parseBackup, restoreBackup, MAX_BACKUP_BYTES, NewerFormatError, type BackupPreview } from './backup.js';
 import {TeamGame, HeadbandsRound, TIMER_CHOICES, defaultTeams, teamNames, roundSeconds} from './games.js';
@@ -13,8 +14,13 @@ const notice = document.querySelector<HTMLElement>('#notice')!;
 const audio = new AudioProbe();
 const sensors = new Sensors();
 const gameAudio=new GameAudio();
-const tilt=new TiltDetector();
+const tilt=new TiltDetector(false);
+const placement=new HeadbandsSetup();
+let placementLabel='';
+const sideways=():boolean=>matchMedia('(orientation: landscape)').matches;
 let library: Library;
+let revealedDeck="";
+let suppressDeckClickUntil=0;
 let route = 'home';
 let selected = '';
 let lookupIndex: number | null = null;
@@ -65,7 +71,7 @@ function destination(target: string, title: string, detail: string, symbol: stri
   return `<button class="menu-row" data-route="${target}"><span class="symbol" aria-hidden="true">${symbol}</span><span><strong>${title}</strong>${detail?`<small>${detail}</small>`:''}</span><span class="arrow" aria-hidden="true">›</span></button>`;
 }
 function picker(): string {
-  const playable=library.decks.filter(d=>d.cards.length);
+  const playable=alphabeticalDecks(library.decks).filter(d=>d.cards.length);
   if(!playable.length) return '<p class="empty">Add cards in Manage Decks to start playing.</p>';
   if(!playable.some(d=>d.id===selected)) { selected=playable[0]!.id; resetLookup(); }
   return `<label for="deck-picker">Deck</label><select id="deck-picker">${playable.map(d=>`<option value="${esc(d.id)}" ${d.id===selected?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`).join('')}</select>`;
@@ -74,6 +80,8 @@ function render(): void {
   const playing=(['catchphrase','headbands','taboo'].includes(route) && (calibrating || (!!round && round.phase!=='ended'))) || (route==='prompts' && !!promptDraw); 
   document.body.classList.toggle('playing',playing);
   document.body.classList.toggle('home-screen',route==='home');
+  document.body.classList.toggle('lookup-screen',route==='lookup');
+  document.querySelector<HTMLButtonElement>('#rename-button')!.hidden=!['editor','taboo-editor'].includes(route)||!!loadFailure;
   document.querySelector<HTMLElement>('#page-title')!.textContent=({home:'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Numbered Lookup',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
   document.querySelector<HTMLButtonElement>('#home-button')!.hidden=route==='home';
   document.querySelector<HTMLButtonElement>('#settings-button')!.hidden=route==='settings' || !!loadFailure;
@@ -97,10 +105,22 @@ function renderHome(): void {
   app.innerHTML=`<p class="section-label">PLAY</p><section class="list-panel">${destination('catchphrase','Catchphrase','Give clues. Guess the word. Pass the phone.','◷')}${destination('headbands','Headbands','Hold it at your forehead. Tilt to answer.','▱')}${destination('prompts','Prompt Picker','Charades / Pictionary / 20 Questions','✦')}${destination('taboo','Taboo','Describe the word. Avoid the forbidden words.','◇')}${destination('lookup','Numbered Lookup / Jenga','Find a card by its number, or pick at random.','#')}</section>
     <p class="section-label">YOUR DECKS</p><section class="list-panel">${destination('library','Manage Decks',`${library.decks.length} ${library.decks.length===1?'deck':'decks'} saved on this device`,'▱')}${destination('backups','Backups','Save a copy or restore a backup.','↥')}</section>`;
 }
+function libraryRow(d:Deck|TabooDeck,kind:'regular'|'taboo'):string {
+  const key=kind+':'+d.id,open=revealedDeck===key;
+  return `<div class="swipe-deck ${open?'revealed':''}" data-swipe-key="${esc(key)}"><button class="swipe-delete" data-swipe-delete="${esc(d.id)}" data-kind="${kind}" aria-label="Delete ${esc(d.name)}" ${open?'':'hidden'}>Delete</button><button class="menu-row swipe-front" data-${kind==='regular'?'deck':'taboo-deck'}="${esc(d.id)}"><span><strong>${esc(d.name)}</strong><small>${d.cards.length} cards</small></span><span class="arrow" aria-hidden="true">›</span></button></div>`;
+}
+function revealDeck(key:string):void {
+  revealedDeck=key;
+  app.querySelectorAll<HTMLElement>('.swipe-deck').forEach(row=>{const open=row.dataset.swipeKey===key;row.classList.toggle('revealed',open);row.querySelector<HTMLButtonElement>('.swipe-delete')!.hidden=!open;});
+}
+async function deleteLibraryDeck(id:string,kind:string):Promise<void>{
+  await mutate(next=>{if(kind==='taboo')next.tabooDecks=next.tabooDecks?.filter(d=>d.id!==id);else next.decks=next.decks.filter(d=>d.id!==id);},true);
+  revealedDeck='';restorePoint=await recovery();render();say('Deck deleted. You can recover it from Backups → Local recovery.');
+}
 function renderLibrary(): void {
   app.innerHTML=`<div class="toolbar"><span class="muted">${library.decks.length} decks</span>${button('new-deck','＋ New Deck','primary')}</div>
     ${entry==='new-deck'?`<form id="new-deck" class="panel"><h2>New Deck</h2><label for="deck-name">Deck name</label><input id="deck-name" name="name" required maxlength="120" placeholder="Celebrities"><div class="form-actions"><button class="primary">Create Deck</button>${button('cancel-edit','Cancel')}</div></form>`:''}
-    <section class="list-panel">${library.decks.length ? library.decks.map(d=>`<button class="menu-row" data-deck="${esc(d.id)}"><span><strong>${esc(d.name)}</strong><small>${d.cards.length} cards</small></span><span class="arrow" aria-hidden="true">›</span></button>`).join('') : '<p class="empty">Create a deck, then add cards or paste a list.</p>'}</section>`;
+    <section class="list-panel">${library.decks.length ? alphabeticalDecks(library.decks).map(d=>libraryRow(d,'regular')).join('') : '<p class="empty">Create a deck, then add cards or paste a list.</p>'}</section>`;
 }
 function editorTabs():string {
   return `<div class="segmented" role="group" aria-label="Deck content"><button data-action="editor-cards" aria-pressed="${editorSection==='cards'}">Cards</button><button data-action="editor-activities" aria-pressed="${editorSection==='activities'}">Activities</button></div>`;
@@ -149,12 +169,12 @@ function renderLookup(): void {
   const current=lookupIndex===null?undefined:d?.cards[lookupIndex];
   const activity=lookupActivity?.current;
   const setup=d?.activities.length?`<label for="activity-mode">Activity mode</label><select id="activity-mode"><option value="none" ${activityMode==='none'?'selected':''}>None — card only</option><option value="fixed" ${activityMode==='fixed'?'selected':''}>Fixed / Choose One</option><option value="random" ${activityMode==='random'?'selected':''}>Random</option><option value="cycle" ${activityMode==='cycle'?'selected':''}>Cycle — in list order</option></select>${activityMode==='fixed'?`<label for="fixed-activity">Use this Activity</label><select id="fixed-activity">${d.activities.map((a,i)=>`<option value="${esc(a.id)}" ${a.id===fixedActivityId?'selected':''}>${i+1}. ${esc(a.text)}</option>`).join('')}</select>`:''}<p class="muted activity-help">${activityMode==='random'?'Each selection picks an Activity without repeating the last one when possible.':activityMode==='cycle'?'Each selection advances one Activity, then wraps back to the first.':activityMode==='fixed'?'The same Activity accompanies every card.':'Shows the card by itself.'}</p>`:'';
-  app.innerHTML=`<section class="panel compact">${choose}${setup}</section>${d?.cards.length?`
+  app.innerHTML=`<section class="panel compact lookup-setup">${choose}${setup}</section>${d?.cards.length?`
     <form id="lookup-form" class="number-form"><label for="item-number">Card number · 1–${d.cards.length}</label><div class="row"><input id="item-number" name="number" type="text" inputmode="numeric" pattern="[0-9]+" value="${lookupIndex===null?'':lookupIndex+1}" required><button class="narrow primary">Show</button></div></form>
-    <section class="panel lookup-display"><span class="tag">${lookupIndex===null?'Choose a number':`Card ${lookupIndex+1} of ${d.cards.length}`}</span><div class="prompt">${current?esc(current.text):'Ready when you are'}</div>${current&&activity?`<div class="activity-instruction" aria-live="polite"><span class="section-label">ACTIVITY</span><p>${esc(renderActivity(activity.text,current.text))}</p></div>`:''}${current&&activityMode==='random'&&d.activities.length>1?button('reroll-activity','↻ Reroll Activity','quiet full'):''}<div class="row"><button data-action="lookup-prev" ${lookupIndex===0?'disabled':''}>Previous</button><button data-action="lookup-next" ${lookupIndex===d.cards.length-1?'disabled':''}>Next</button>${button('lookup-random','Random')}</div></section>`:''}`;
+    <section class="panel lookup-display"><span class="tag">${lookupIndex===null?'Choose a number':`Card ${lookupIndex+1} of ${d.cards.length}`}</span><div class="prompt ${current&&activity?'composed-activity':''}" aria-live="polite">${current&&activity?`<span>${activityParts(activity.text,current.text).map(part=>part.kind==='card'?`<strong>${esc(part.text)}</strong>`:`<em>${esc(part.text)}</em>`).join('')}</span>`:current?esc(current.text):'Ready when you are'}</div>${current&&activityMode==='random'&&d.activities.length>1?button('reroll-activity','↻ Reroll Activity','quiet full'):''}<div class="row"><button data-action="lookup-prev" ${lookupIndex===0?'disabled':''}>Previous</button><button data-action="lookup-next" ${lookupIndex===d.cards.length-1?'disabled':''}>Next</button>${button('lookup-random','Random')}</div></section>`:''}`;
 }
 function renderPrompts(): void {
-  const playable=library.decks.filter(d=>d.cards.length);
+  const playable=alphabeticalDecks(library.decks).filter(d=>d.cards.length);
   if(promptDeck!==null && !playable.some(d=>d.id===promptDeck)){promptDeck=null;promptDraw=undefined;}
   if(promptDraw){
     app.innerHTML=`<section class="game active-game prompt-picker"><div class="game-status"><span class="tag">${esc(promptDraw.deck.name)}</span><span class="tag">${promptDeck===null?'All Decks':'One deck'}</span></div><div class="prompt" aria-live="polite">${esc(promptDraw.card.text)}</div><div class="game-controls"><div class="answer-bar">${button('prompt-choose','Decks','quiet')}${button('prompt-draw','Draw Again','primary next-card')}${button('home','Home','quiet')}</div></div></section>`;return;
@@ -180,16 +200,18 @@ function renderCatchphrase(): void {
 }
 function renderHeadbands():void {
   if(calibrating){
-    app.innerHTML=`<section class="game calibration"><h2>Hold Steady</h2><p>Hold the phone sideways at your forehead, screen facing your friends.</p><div class="prompt">Ready to tilt?</div><p>Tilt down for Correct · Tilt up for Pass</p><p class="muted" id="tilt-status">${preparing?'Preparing audio and motion…':sensors.motionAllowed?'Hold steady. The round starts automatically.':'Motion unavailable or denied. You can use the buttons.'}</p>${button('use-buttons','Use Buttons','primary full')}${button('cancel-headbands','Cancel','full quiet')}</section>`;return;
+    const stage=placement.stage;
+    const title=stage==='rotate'?'Rotate Your Phone':stage==='countdown'?'Get Ready':'Hold to Your Forehead';
+    app.innerHTML=`<section class="game calibration guided-placement"><h2>${title}</h2><p>${stage==='rotate'?'Turn your phone sideways into landscape.':stage==='countdown'?'Keep it steady. Your friends will see the first card after the countdown.':'Raise the phone to your forehead with the screen facing your friends.'}</p><div class="prompt" aria-live="polite">${stage==='rotate'?'↻':stage==='countdown'?placement.seconds(performance.now()/1000):'▱'}</div><p class="muted" id="tilt-status">${preparing?'Preparing audio and motion…':!sensors.motionAllowed?'Motion unavailable or denied. Use Buttons to play.':stage==='countdown'?'Hold this position for calibration.':'Tilt down for Correct · Tilt up for Pass'}</p>${stage==='forehead'&&sensors.motionAllowed?button('forehead-ready','I’m at My Forehead','primary full'):''}${button('use-buttons','Use Buttons','full quiet')}${button('cancel-headbands','Cancel','full quiet')}</section>`;return;
   }
-  if(!round){const choose=picker();app.innerHTML=`<form id="headbands-form" class="panel">${choose}${deck()?.cards.length?`<label for="head-duration">Round timer</label><select id="head-duration" name="duration">${durationPicker(headDuration)}</select><label class="check"><input type="checkbox" id="use-tilt" ${useTilt?'checked':''}> Tilt controls</label><label class="check"><input type="checkbox" id="timer-sound" ${timerSound?'checked':''}> Timer sound</label><button class="primary full">Start Round</button>`:''}</form><details class="panel"><summary>How to play</summary><p>Hold sideways and steady at your forehead. Your friends give clues. Tilt down for Correct and up for Pass, then return to your forehead before the next answer. You can also use the buttons.</p><p>Each card appears once per round. The round ends when time runs out or every card has been used. The timer waits while you position the phone.</p></details>`;return;}
+  if(!round){const choose=picker();app.innerHTML=`<form id="headbands-form" class="panel">${choose}${deck()?.cards.length?`<label for="head-duration">Round timer</label><select id="head-duration" name="duration">${durationPicker(headDuration)}</select><label class="check"><input type="checkbox" id="use-tilt" ${useTilt?'checked':''}> Tilt controls</label><label class="check"><input type="checkbox" id="timer-sound" ${timerSound?'checked':''}> Timer sound</label><button class="primary full">Start Round</button>`:''}</form><details class="panel"><summary>How to play</summary><p>Rotate into landscape, then hold the phone at your forehead for the three-second countdown. Your friends give clues. Tilt down for Correct and up for Pass, then return to your forehead before the next answer. You can also use the buttons.</p><p>Each card appears once per round. The round ends when time runs out or every card has been used. The timer waits while you position the phone.</p></details>`;return;}
   const game=round as HeadbandsRound,ended=game.phase==='ended',paused=game.phase==='paused';
   app.innerHTML=`<section class="game ${ended?'':'active-game'} ${useTilt?'tilt-game':''}"><div class="game-status"><span class="tag">${paused?'Paused':ended?'Round complete':''}</span><span id="remaining">${showCountdown?`${Math.ceil(game.remaining/1000)}s`:''}</span></div><div class="prompt" aria-live="polite">${ended?(game.reason==='complete'?'Deck complete!':game.reason==='time'?'Time’s up!':'Round ended'):paused?'Paused':esc(game.current.text)}</div>${ended?`<p class="result">${game.score} correct · ${game.passed} passed · ${game.results.filter(r=>r.outcome==='Unanswered').length} unanswered</p>${button('new-round','Play Again','primary full')}${button('home','Home','full quiet')}<section class="list-panel results">${game.results.map(r=>`<div class="card-row"><span class="card-text">${esc(r.card.text)}</span><span class="muted">${r.outcome}</span></div>`).join('')}</section>`:paused?`<div class="game-controls actions">${button('resume','Resume','primary')}${button('end-round','End Round')}</div>`:`<div class="game-controls">${useTilt?`<p class="tilt-hint muted" id="tilt-status">${tilt.calibrated?'Return to forehead between tilts':'Hold sideways and steady to enable tilts'}</p>`:''}<div class="answer-bar">${button('pause','Pause','quiet')}${useTilt?`<span class="muted tilt-score">${game.score} correct</span>`:`<div class="answer-buttons">${button('head-correct','Correct','primary')}${button('head-pass','Pass')}</div>`}${button('end-round','End','quiet')}</div></div>`}</section>`;
 }
 function tabooDeck():TabooDeck|undefined{return library.tabooDecks?.find(d=>d.id===tabooSelected);}
 function renderTabooLibrary():void{
-  const decks=library.tabooDecks??[];
-  app.innerHTML=`<div class="toolbar">${button('taboo-menu','‹ Taboo')} ${button('taboo-new','＋ New Taboo Deck','primary')}</div>${entry==='new-deck'?`<form id="taboo-new-form" class="panel"><label for="taboo-name">Taboo deck name</label><input id="taboo-name" name="name" required maxlength="120"><div class="form-actions"><button class="primary">Create Deck</button>${button('cancel-edit','Cancel')}</div></form>`:''}<p class="muted">Only Taboo uses these decks. Regular decks stay in Manage Decks.</p><section class="list-panel">${decks.map(d=>`<button class="menu-row" data-taboo-deck="${esc(d.id)}"><span><strong>${esc(d.name)}</strong><small>${d.cards.length} cards</small></span><span class="arrow">›</span></button>`).join('')||'<p class="empty">Create a Taboo deck to get started.</p>'}</section>`;
+  const decks=alphabeticalDecks(library.tabooDecks??[]);
+  app.innerHTML=`<div class="toolbar">${button('taboo-menu','‹ Taboo')} ${button('taboo-new','＋ New Taboo Deck','primary')}</div>${entry==='new-deck'?`<form id="taboo-new-form" class="panel"><label for="taboo-name">Taboo deck name</label><input id="taboo-name" name="name" required maxlength="120"><div class="form-actions"><button class="primary">Create Deck</button>${button('cancel-edit','Cancel')}</div></form>`:''}<p class="muted">Only Taboo uses these decks. Regular decks stay in Manage Decks.</p><section class="list-panel">${decks.map(d=>libraryRow(d,'taboo')).join('')||'<p class="empty">Create a Taboo deck to get started.</p>'}</section>`;
 }
 function renderTabooEditor():void{
   const d=tabooDeck();if(!d){route='taboo-library';render();return;}
@@ -201,7 +223,7 @@ function renderTabooEditor():void{
   app.innerHTML=`<div class="toolbar">${button('taboo-library','‹ Taboo Decks')}<span class="muted">${d.cards.length} cards</span></div><div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Paste a List')}</div>${form}<section class="list-panel">${d.cards.slice(cardPage*50,cardPage*50+50).map(c=>`<button class="menu-row" data-taboo-edit="${esc(c.id)}"><span><strong>${esc(c.text)}</strong><small>${c.forbidden.map(esc).join(' · ')}</small></span><span class="arrow">›</span></button>`).join('')||'<p class="empty">Add an answer and five forbidden words.</p>'}</section>${pages>1?`<p class="muted">Page ${cardPage+1} of ${pages}</p><div class="actions"><button data-action="page-prev" ${cardPage===0?'disabled':''}>Previous 50</button><button data-action="page-next" ${cardPage===pages-1?'disabled':''}>Next 50</button></div>`:''}<details class="panel"><summary>Deck options</summary><div class="option-list">${button('rename-deck','Rename Deck')}${button('taboo-backup','Back Up This Deck')}${button('taboo-delete','Delete Deck','danger')}</div></details>`;
 }
 function renderTaboo():void{
-  const playable=(library.tabooDecks??[]).filter(d=>d.cards.length);
+  const playable=alphabeticalDecks(library.tabooDecks??[]).filter(d=>d.cards.length);
   if(!playable.some(d=>d.id===tabooSelected))tabooSelected=playable[0]?.id??'';
   if(!(round instanceof TabooRound)){
     app.innerHTML=`<section class="list-panel">${destination('taboo-library','Manage Taboo Decks','Create cards with five forbidden words.','▱')}</section>${playable.length?`<form id="taboo-round-form" class="panel"><label for="taboo-picker">Taboo deck</label><select id="taboo-picker">${playable.map(d=>`<option value="${esc(d.id)}" ${d.id===tabooSelected?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`).join('')}</select><label for="taboo-team-count">Teams</label><select id="taboo-team-count">${Array.from({length:7},(_,i)=>`<option value="${i+2}" ${tabooTeams.length===i+2?'selected':''}>${i+2} teams</option>`).join('')}</select>${tabooTeams.map((name,i)=>`<label for="taboo-team-${i}">Team ${i+1} name</label><input id="taboo-team-${i}" data-taboo-team="${i}" value="${esc(name)}" required maxlength="80">`).join('')}<label for="taboo-duration">Round timer</label><select id="taboo-duration">${durationPicker(tabooDuration)}</select><label class="check"><input id="timer-sound" type="checkbox" ${timerSound?'checked':''}> Timer sound</label><button class="primary full" ${preparing?'disabled':''}>${preparing?'Preparing…':'Start Game'}</button></form>`:'<p class="empty">Create a Taboo deck and add cards to play.</p>'}<details class="panel"><summary>How to play</summary><p>Describe the bold answer without saying it or any of the five forbidden words. A player from another team watches the card and calls violations.</p><p>Correct earns 1 point. Pass earns 0. Taboo subtracts 1. Teams take turns each round. Each card appears once per round; the deck reshuffles next round. The countdown stays hidden.</p></details>`;return;
@@ -223,7 +245,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.6.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.7.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <p class="section-label">EXPERIMENT</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section><p class="muted footnote">Separate PWA experiment. Your native DeckForge app is unchanged.</p>`;
 }
 function renderStorageError(): void {
@@ -250,8 +272,8 @@ async function mutate(change: (next: Library)=>void, checkpoint=false): Promise<
 }
 function navigate(target: string): void {
   if((calibrating || (round && round.phase!=='ended')) && !confirm('Leave and end the current round?')) return;
-  gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
-  resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); window.scrollTo({top:0});
+  gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
+  revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); window.scrollTo({top:0});
 }
 function openEntry(next: typeof entry): void {
   confirmActivityDelete=false;entry=next; render(); app.querySelector<HTMLElement>('input,textarea')?.focus();
@@ -300,6 +322,7 @@ async function action(name: string): Promise<void> {
     case 'taboo-delete-card':{const t=tabooDeck(),id=editingCard;if(t&&id&&confirm('Delete this Taboo card?')){await mutate(next=>{const d=next.tabooDecks!.find(d=>d.id===t.id)!;d.cards=d.cards.filter(c=>c.id!==id);},true);entry='';editingCard=undefined;render();say('Card deleted. A local restore point was saved.');}break;}
     case 'taboo-correct':case 'taboo-pass':case 'taboo-violation':checkRound();if(round instanceof TabooRound&&round.answer(name==='taboo-correct'?'Correct':name==='taboo-pass'?'Passed':'Taboo',performance.now())){if(name!=='taboo-pass')gameAudio.feedback(name==='taboo-correct');if(round.phase==='ended'){gameAudio.stopCountdown();releaseWake();tabooMatch?.settle();}render();}break;
     case 'taboo-next-round':if(tabooMatch&&round?.phase==='ended'&&!preparing){const token=gameGeneration;preparing=true;try{await readyAudio();if(token===gameGeneration&&!document.hidden){round=tabooMatch.start(performance.now());startCues();}}finally{preparing=false;render();}}break;
+    case 'quick-rename':if(route==='editor'){editorSection='cards';openEntry('rename');document.querySelector('#rename')?.scrollIntoView({block:'start'});}else if(route==='taboo-editor'){openEntry('rename');document.querySelector('#taboo-rename-form')?.scrollIntoView({block:'start'});}break;
     case 'home': navigate('home'); break;
     case 'settings': navigate('settings'); break;
     case 'backups': restorePoint=await recovery(); navigate('backups'); break;
@@ -332,8 +355,9 @@ async function action(name: string): Promise<void> {
     case 'new-round': gameGeneration++;round=undefined;gameAudio.stop();audio.stop();sensors.stop();tilt.reset();calibrating=false;render();break;
     case 'next-team-round': if(match?.scored&&!preparing){const token=gameGeneration;preparing=true;try{await readyAudio();if(token===gameGeneration&&!document.hidden&&match?.scored){round=match.start(performance.now());startCues();}}finally{preparing=false;}}break;
     case 'finish-game': navigate('home');break;
-    case 'use-buttons': if(!preparing){useTilt=false;calibrating=false;sensors.stop();tilt.reset();beginHeadbands();}break;
-    case 'cancel-headbands': gameGeneration++;calibrating=false;preparing=false;sensors.stop();tilt.reset();gameAudio.stop();releaseWake();render();break;
+    case 'forehead-ready':placement.confirmPlacement();say('Keep the phone steady at your forehead.');break;
+    case 'use-buttons': if(!preparing){gameAudio.stopCountdown();placement.reset();useTilt=false;calibrating=false;sensors.stop();tilt.reset();beginHeadbands();}break;
+    case 'cancel-headbands': placement.reset();gameGeneration++;calibrating=false;preparing=false;sensors.stop();tilt.reset();gameAudio.stop();releaseWake();render();break;
     case 'reload': location.reload(); break;
     case 'check-update': {
       if(!('serviceWorker' in navigator)) throw new Error('Updates need a secure browser connection.');
@@ -434,8 +458,28 @@ app.addEventListener('change',event=>{
     })().catch(error=>{render();say(String(error));});
   }
 });
+let deckSwipe:{row:HTMLElement;x:number;y:number;pointer:number;horizontal:boolean}|undefined;
+app.addEventListener('pointerdown',event=>{
+  const row=(event.target as HTMLElement).closest<HTMLElement>('.swipe-front')?.parentElement;
+  if(!row)return;deckSwipe={row,x:event.clientX,y:event.clientY,pointer:event.pointerId,horizontal:false};
+});
+app.addEventListener('pointermove',event=>{
+  if(!deckSwipe||event.pointerId!==deckSwipe.pointer)return;
+  const dx=event.clientX-deckSwipe.x,dy=event.clientY-deckSwipe.y;
+  if(Math.abs(dy)>20&&!deckSwipe.horizontal&&Math.abs(dy)>Math.abs(dx)){deckSwipe=undefined;return;}
+  if(Math.abs(dx)>20&&Math.abs(dx)>Math.abs(dy)*1.3){deckSwipe.horizontal=true;event.preventDefault();}
+});
+app.addEventListener('pointerup',event=>{
+  if(!deckSwipe||event.pointerId!==deckSwipe.pointer)return;
+  const swipe=deckSwipe;deckSwipe=undefined;const dx=event.clientX-swipe.x;
+  if(swipe.horizontal){suppressDeckClickUntil=performance.now()+400;if(dx<-45)revealDeck(swipe.row.dataset.swipeKey??'');else if(dx>45)revealDeck('');}
+});
+app.addEventListener('pointercancel',()=>{deckSwipe=undefined;});
 document.addEventListener('click',event=>{
   const el=(event.target as HTMLElement).closest<HTMLButtonElement>('button');if(!el)return;
+  if(el.classList.contains('swipe-front')&&performance.now()<suppressDeckClickUntil){event.preventDefault();return;}
+  if(el.dataset.swipeDelete){void deleteLibraryDeck(el.dataset.swipeDelete,el.dataset.kind??'regular').catch(error=>say(String(error)));return;}
+  if(!el.closest('.swipe-deck'))revealDeck('');
   if(el.dataset.route) { if(el.dataset.route==='backups') void action('backups').catch(error=>say(String(error)));else navigate(el.dataset.route); }
   else if(el.dataset.tabooDeck){tabooSelected=el.dataset.tabooDeck;cardPage=0;entry='';editingCard=undefined;route='taboo-editor';render();}
   else if(el.dataset.tabooEdit){editingCard=el.dataset.tabooEdit;openEntry('card');document.querySelector('#taboo-card-form')?.scrollIntoView({block:'start',behavior:'smooth'});}
@@ -461,7 +505,7 @@ function beginHeadbands():void {
   else{round=new HeadbandsRound(deck()!.cards,roundSeconds(headDuration),performance.now());startCues();}
 }
 async function prepareHeadbands(resuming:boolean):Promise<void> {
-  if(preparing)return;roundSeconds(headDuration);const token=++gameGeneration;preparing=true;calibrating=useTilt;tilt.reset();sensors.onGravity=undefined;
+  if(preparing)return;roundSeconds(headDuration);const token=++gameGeneration;preparing=true;calibrating=useTilt;placement.reset();placementLabel='';tilt.reset();sensors.onGravity=undefined;
   const sound=readyAudio(),permission=useTilt?sensors.start():Promise.resolve();render();void keepAwake();
   try{
     await Promise.all([sound,permission,resuming?Promise.resolve():mutate(next=>{next.headbandsDuration=headDuration;})]);
@@ -469,24 +513,43 @@ async function prepareHeadbands(resuming:boolean):Promise<void> {
     if(useTilt){
       sensors.onGravity=(g,at)=>{
         if(document.hidden||route!=='headbands')return;
-        const event=tilt.update(...g,at);if(event==='ready'&&calibrating)beginHeadbands();else if(!calibrating&&round?.phase==='running'&&(event==='correct'||event==='pass'))headAnswer(event==='correct');
+        if(calibrating){placement.observe(g,at,sideways(),sensors.heading);updatePlacement();return;}
+        if(round?.phase!=='running')return;
+        const event=tilt.update(...g,at);
+        if(!tilt.calibrated){pauseGame();say('Phone position changed or motion was interrupted. Tap Resume to recalibrate.');return;}
+        if(event==='correct'||event==='pass')headAnswer(event==='correct');
         const status=document.querySelector('#tilt-status');if(status&&!calibrating)status.textContent=tilt.calibrated?'Return to forehead between tilts':'Hold sideways and steady to enable tilts';
       };
     }else beginHeadbands();
   }finally{if(token===gameGeneration){preparing=false;render();}}
+}
+function updatePlacement():void {
+  if(!calibrating||preparing)return;
+  const old=placementLabel;placement.tick(performance.now()/1000,sideways());
+  if(placement.stage==='ready'&&placement.gravity){
+    if(tilt.calibrate(placement.gravity,performance.now()/1000)){beginHeadbands();placementLabel='';return;}
+    placement.reset();
+  }
+  const label=placement.stage+':'+(placement.stage==='countdown'?placement.seconds(performance.now()/1000):'');
+  if(old!==label){
+    if(placement.stage==='countdown'&&!old.startsWith('countdown:'))gameAudio.placementCountdown(timerSound);
+    else if(placement.stage!=='countdown'&&old.startsWith('countdown:'))gameAudio.stopCountdown();
+    placementLabel=label;render();
+  }
 }
 function headAnswer(correct:boolean):void {
   checkRound();if(!(round instanceof HeadbandsRound))return;
   if(round.answer(correct,performance.now())){gameAudio.feedback(correct);tilt.disarm();if(round.phase==='ended'){gameAudio.stopCountdown();sensors.stop();releaseWake();}render();}
 }
 function pauseGame():void {
-  checkRound();gameGeneration++;preparing=false;calibrating=false;
+  checkRound();gameGeneration++;preparing=false;calibrating=false;placement.reset();placementLabel='';
   if(round?.phase==='running')round.pause(performance.now());
   // Expiry owns its scheduled buzzer; pausing an already-ended round must not cut it off.
   if(round?.phase!=='ended')gameAudio.stop();audio.stop();sensors.stop();tilt.reset();releaseWake();render();
 }
 gameAudio.onInterrupt=()=>{if(calibrating||round?.phase==='running'){pauseGame();say('Audio was interrupted. Tap Resume when ready.');}};
 function checkRound(): void {
+  if(calibrating)updatePlacement();
   if(calibrating&&!preparing){const status=document.querySelector('#tilt-status');if(status&&sensors.motionAllowed&&!sensors.lastAt&&performance.now()-sensors.startedAt>5000)status.textContent='No motion readings yet. Use Buttons, or check motion permission in Safari.';}
   if(!round)return;const previous=round.phase;round.tick(performance.now());
   if(previous==='running'&&round.phase==='ended'){audio.stop();sensors.stop();tilt.reset();releaseWake();render();}

@@ -10,6 +10,7 @@ test('game audio schedules the final buzzer on the same clock, cancels pause cue
  try{const audio=new GameAudio();await audio.unlock();audio.schedule(15000,90000,true);
  const buzzers=nodes.filter(n=>n.kind==='buzzer');assert.equal(buzzers.length,2);assert.ok(buzzers.every(n=>n.at===115));assert.ok(nodes.filter(n=>n.kind==='clip').every(n=>n.at<=114.9));
  audio.feedback(true);const feedback=nodes.at(-1);audio.stopCountdown();assert.ok(buzzers.every(n=>n.stopped));assert.equal(feedback.stopped,undefined);audio.stop();assert.equal(feedback.stopped,true);
- const count=nodes.length;audio.schedule(10000,90000,false);assert.equal(nodes.length,count);
+ audio.placementCountdown(true);const placement=nodes.slice(-3);assert.deepEqual(placement.map(n=>n.at),[100,101,102]);assert.ok(placement.every(n=>n.kind==='clip'));audio.stopCountdown();assert.ok(placement.every(n=>n.stopped));
+ const count=nodes.length;audio.placementCountdown(false);assert.equal(nodes.length,count);audio.schedule(10000,90000,false);assert.equal(nodes.length,count);
  }finally{globalThis.window=oldWindow;globalThis.fetch=oldFetch;}
 });
