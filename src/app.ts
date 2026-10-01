@@ -18,6 +18,20 @@ import { AudioProbe } from './audio.js';
 import { Sensors } from './sensors.js';
 const app = document.querySelector<HTMLElement>('#app')!;
 const notice = document.querySelector<HTMLElement>('#notice')!;
+// Navigation decoration only: session updates and gameplay never start transitions.
+const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
+let navigationAnimation:Animation|undefined;
+reducedMotion.addEventListener('change',()=>navigationAnimation?.cancel());
+function animateNavigation(kind:'forward'|'back'|'tab-left'|'tab-right'):void {
+  navigationAnimation?.cancel();
+  if(reducedMotion.matches||typeof app.animate!=='function')return;
+  const offset=kind==='forward'?'translateY(10px)':kind==='back'?'translateY(-6px)':`translateX(${kind==='tab-right'?14:-14}px)`;
+  navigationAnimation=app.animate([
+    {opacity:.6,transform:offset},
+    {opacity:1,transform:'translate(0,0)'}
+  ],{duration:180,easing:'cubic-bezier(.2,.8,.2,1)'});
+}
+
 const audio = new AudioProbe();
 const sensors = new Sensors();
 const gameAudio=new GameAudio();
@@ -128,6 +142,7 @@ function organization(d:Deck|TabooDeck,format:'regular'|'taboo'):string {
   return `<details class="panel deck-organization"><summary>Deck organization · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</summary><form id="organization-form" data-format="${format}"><fieldset><legend>Best suited for</legend><div class="context-options">${['play','work','both'].map(c=>`<label><input type="radio" name="deckContext" value="${c}" ${d.deckContext===c?'checked':''}> ${c==='both'?'Both':c==='play'?'Play':'Work'}</label>`).join('')}</div></fieldset><fieldset><legend>Available in</legend>${MODES.filter(m=>m.format===format).map(m=>`<label class="check"><input type="checkbox" name="compatibleModes" value="${m.id}" ${d.compatibleModes.includes(m.id)?'checked':''} ${m.id==='lookup'&&d.cards.length!==54?'disabled':''}> ${m.title}${m.id==='lookup'&&d.cards.length!==54?' — requires exactly 54 cards':''}</label>`).join('')}</fieldset><p class="muted">Context recommends decks; it never restricts access. Unchecked modes can still find this deck with Show All Decks when its card format and size are valid. Jenga requires 54 cards; an existing assignment stays saved but is unavailable at other sizes.${format==='taboo'?' Taboo cards require five forbidden words and use their separate editor.':''}</p><button class="primary full">Save Organization</button></form></details>`;
 }
 function render(): void {
+  navigationAnimation?.cancel();
   const active=document.activeElement instanceof HTMLElement && app.contains(document.activeElement)?document.activeElement:undefined;
   const focusId=active?.id;
   const focusAction=active?.dataset.action;
@@ -339,7 +354,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.11.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.11.1')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
@@ -365,12 +380,17 @@ async function mutate(change: (next: Library)=>void, checkpoint=false): Promise<
   } finally { saving=false; }
 }
 function navigate(target: string,nextSection?:typeof section): void {
+  const previousSection=section,previousRoute=route;
   if((calibrating || (round && round.phase!=='ended')) && !confirm('Leave and end the current round?')) return;
   if(nextSection)section=nextSection;
   if(['library','editor','taboo-library','taboo-editor'].includes(target))section='decks';
   if(MODES.some(m=>m.id===target)){launchContext=(target==='lookup'||target==='prompts'||section==='work')?'work':'play';section=launchContext;showAllDecks=false;selected='';tabooSelected='';promptIds=undefined;promptSearch='';promptActivityMode='none';promptFixed={};promptSession=undefined;}
   gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
   presenting=false;presentationControls=true;expandedCards=false;pendingImport=undefined;bulkDraft='';revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); app.focus({preventScroll:true});window.scrollTo({top:0});
+  if(previousSection!==section){
+    const tabs=['play','work','decks'];
+    animateNavigation(tabs.indexOf(section)>tabs.indexOf(previousSection)?'tab-right':'tab-left');
+  }else if(previousRoute!==route)animateNavigation(['home','library','taboo-library'].includes(route)?'back':'forward');
 }
 function openEntry(next: typeof entry): void {
   pendingImport=undefined;bulkDraft='';skipImportDuplicates=false;confirmActivityDelete=false;entry=next; render(); app.querySelector<HTMLElement>('form:not(#organization-form) input,form:not(#organization-form) textarea')?.focus();
@@ -596,9 +616,9 @@ document.addEventListener('click',event=>{
   if(!el.closest('.swipe-deck'))revealDeck('');
   if(el.dataset.tab){const tab=el.dataset.tab as typeof section;navigate(sectionRoot(tab),tab);}
   else if(el.dataset.route) { if(el.dataset.route==='backups') void action('backups').catch(error=>say(String(error)));else navigate(el.dataset.route); }
-  else if(el.dataset.tabooDeck){tabooSelected=el.dataset.tabooDeck;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';editingCard=undefined;route='taboo-editor';section='decks';render();}
+  else if(el.dataset.tabooDeck){tabooSelected=el.dataset.tabooDeck;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';editingCard=undefined;route='taboo-editor';section='decks';render();app.focus({preventScroll:true});window.scrollTo({top:0});animateNavigation('forward');}
   else if(el.dataset.tabooEdit){editingCard=el.dataset.tabooEdit;openEntry('card');document.querySelector('#taboo-card-form')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
-  else if(el.dataset.deck) {editorSection='cards';editingActivity=undefined;activityPage=0;selected=el.dataset.deck;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';editingCard=undefined;route='editor';section='decks';say('');render();}
+  else if(el.dataset.deck) {editorSection='cards';editingActivity=undefined;activityPage=0;selected=el.dataset.deck;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';editingCard=undefined;route='editor';section='decks';say('');render();app.focus({preventScroll:true});window.scrollTo({top:0});animateNavigation('forward');}
   else if(el.dataset.activityEdit){editingActivity=el.dataset.activityEdit;openEntry('activity');document.querySelector('#activity-form')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
   else if(el.dataset.activityMove||el.dataset.cardMove){const d=deck(),id=el.dataset.activityMove??el.dataset.cardMove,direction=el.dataset.direction==='-1'?-1:1;if(d&&id&&!entry)void mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;if(el.dataset.activityMove)target.activities=moveItem(target.activities,id,direction);else target.cards=moveItem(target.cards,id,direction);}).then(()=>say('Order saved.')).catch(error=>say(String(error)));}
   else if(el.dataset.edit) {editingCard=el.dataset.edit;openEntry('card');document.querySelector('#card-form')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
