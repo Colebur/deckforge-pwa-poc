@@ -1,3 +1,4 @@
+import {MODES,metadata,modeDecks,sectionRoot,type ModeId,type LaunchContext,type DeckMetadata} from './modes.js';
 import {HeadbandsSetup} from './headbands-setup.js';
 import {ActivitySession,activityParts,moveItem,type ActivityMode} from './activities.js';
 import {importTaboo,validateTabooCard,TabooRound,TabooGame} from './taboo.js';
@@ -22,6 +23,9 @@ let library: Library;
 let revealedDeck="";
 let suppressDeckClickUntil=0;
 let route = 'home';
+let section:'play'|'work'|'decks'='play';
+let launchContext:LaunchContext='play';
+let showAllDecks=false;
 let selected = '';
 let lookupIndex: number | null = null;
 let activityMode:ActivityMode='none';
@@ -70,23 +74,38 @@ function button(action: string, text: string, cls=''): string { return `<button 
 function destination(target: string, title: string, detail: string, symbol: string): string {
   return `<button class="menu-row" data-route="${target}"><span class="symbol" aria-hidden="true">${symbol}</span><span><strong>${title}</strong>${detail?`<small>${detail}</small>`:''}</span><span class="arrow" aria-hidden="true">›</span></button>`;
 }
+function currentMode():ModeId {return MODES.find(m=>m.id===route)?.id??'catchphrase';}
+function availableDecks(){return modeDecks(library.decks,currentMode(),launchContext,showAllDecks);}
+function deckOptions<T extends DeckMetadata & {id:string;name:string;cards:readonly unknown[]}>(pool:{compatible:T[];other:T[]},value:string|null):string {
+  const option=(d:T)=>`<option value="${esc(d.id)}" ${d.id===value?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`;
+  const labels=[['Recommended for '+(launchContext==='play'?'Play':'Work'),launchContext],['Suited for Both','both'],['Other compatible decks',launchContext==='play'?'work':'play']];
+  return labels.map(([label,context])=>{const decks=pool.compatible.filter(d=>d.deckContext===context);return decks.length?`<optgroup label="${label}">${decks.map(option).join('')}</optgroup>`:'';}).join('')+(showAllDecks&&pool.other.length?`<optgroup label="Other decks — not assigned to this mode">${pool.other.map(option).join('')}</optgroup>`:'');
+}
+function pickerEscape(other:number,compatible:number):string {
+  return `<p class="muted picker-help">${showAllDecks?'Showing all non-empty decks for this card format.':compatible?'Compatible decks, recommended for '+(launchContext==='play'?'Play':'Work')+'.':other?'No compatible decks yet. Show all to try another deck, or edit Available in from Decks.':'Add cards in Decks to make a deck playable.'}</p>${other?button('toggle-all-decks',showAllDecks?'Show Compatible Decks':`Show All Decks (${other} more)`,'quiet picker-escape'):''}`;
+}
 function picker(): string {
-  const playable=alphabeticalDecks(library.decks).filter(d=>d.cards.length);
-  if(!playable.length) return '<p class="empty">Add cards in Manage Decks to start playing.</p>';
-  if(!playable.some(d=>d.id===selected)) { selected=playable[0]!.id; resetLookup(); }
-  return `<label for="deck-picker">Deck</label><select id="deck-picker">${playable.map(d=>`<option value="${esc(d.id)}" ${d.id===selected?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`).join('')}</select>`;
+  const pool=availableDecks();
+  if(!pool.visible.some(d=>d.id===selected)){selected=pool.visible[0]?.id??'';resetLookup();}
+  return (pool.visible.length?`<label for="deck-picker">Deck</label><select id="deck-picker">${deckOptions(pool,selected)}</select>`:'<p class="empty">No decks to select.</p>')+pickerEscape(pool.other.length,pool.compatible.length);
+}
+function organization(d:Deck|TabooDeck,format:'regular'|'taboo'):string {
+  return `<details class="panel deck-organization"><summary>Deck organization · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</summary><form id="organization-form" data-format="${format}"><fieldset><legend>Best suited for</legend><div class="context-options">${['play','work','both'].map(c=>`<label><input type="radio" name="deckContext" value="${c}" ${d.deckContext===c?'checked':''}> ${c==='both'?'Both':c==='play'?'Play':'Work'}</label>`).join('')}</div></fieldset><fieldset><legend>Available in</legend>${MODES.filter(m=>m.format===format).map(m=>`<label class="check"><input type="checkbox" name="compatibleModes" value="${m.id}" ${d.compatibleModes.includes(m.id)?'checked':''}> ${m.title}</label>`).join('')}</fieldset><p class="muted">Context recommends decks; it never restricts access. Unchecked modes can still find this deck with Show All Decks.${format==='taboo'?' Taboo cards require five forbidden words and use their separate editor.':''}</p><button class="primary full">Save Organization</button></form></details>`;
 }
 function render(): void {
   const playing=(['catchphrase','headbands','taboo'].includes(route) && (calibrating || (!!round && round.phase!=='ended'))) || (route==='prompts' && !!promptDraw); 
   document.body.classList.toggle('playing',playing);
   document.body.classList.toggle('home-screen',route==='home');
+  document.body.classList.toggle('has-tabs',!playing);
+  const tabs=document.querySelector<HTMLElement>('#main-tabs')!;tabs.hidden=playing;
+  tabs.innerHTML=[['play','▶','Play'],['work','▦','Work'],['decks','▱','Decks']].map(([id,icon,title])=>`<button data-tab="${id}" ${section===id?'aria-current="page"':''}><span aria-hidden="true">${icon}</span>${title}</button>`).join('');
   document.body.classList.toggle('lookup-screen',route==='lookup');
   document.querySelector<HTMLButtonElement>('#rename-button')!.hidden=!['editor','taboo-editor'].includes(route)||!!loadFailure;
-  document.querySelector<HTMLElement>('#page-title')!.textContent=({home:'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Numbered Lookup',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
+  document.querySelector<HTMLElement>('#page-title')!.textContent=({home:section==='work'?'Work':'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Numbered Lookup',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
   document.querySelector<HTMLButtonElement>('#home-button')!.hidden=route==='home';
   const back=document.querySelector<HTMLButtonElement>('#home-button')!;
   back.dataset.action=route==='editor'?'back':route==='taboo-editor'?'taboo-library':'home';
-  back.setAttribute('aria-label',route==='editor'?'Back to Deck Library':route==='taboo-editor'?'Back to Taboo Decks':'Back to Home');
+  back.setAttribute('aria-label',route==='editor'?'Back to Deck Library':route==='taboo-editor'?'Back to Taboo Decks':`Back to ${section==='play'?'Play':section==='work'?'Work':'Decks'}`);
   document.querySelector<HTMLButtonElement>('#settings-button')!.hidden=route==='settings' || !!loadFailure;
   document.querySelector<HTMLElement>('footer')!.hidden=!['settings','lab'].includes(route);
   if(loadFailure && route!=='backups') { renderStorageError(); return; }
@@ -105,12 +124,12 @@ function render(): void {
   else renderLab();
 }
 function renderHome(): void {
-  app.innerHTML=`<p class="section-label">PLAY</p><section class="list-panel">${destination('catchphrase','Catchphrase','Give clues. Guess the word. Pass the phone.','◷')}${destination('headbands','Headbands','Hold it at your forehead. Tilt to answer.','▱')}${destination('prompts','Prompt Picker','Charades / Pictionary / 20 Questions','✦')}${destination('taboo','Taboo','Describe the word. Avoid the forbidden words.','◇')}${destination('lookup','Numbered Lookup / Jenga','Find a card by its number, or pick at random.','#')}</section>
-    <p class="section-label">YOUR DECKS</p><section class="list-panel">${destination('library','Manage Decks',`${library.decks.length} ${library.decks.length===1?'deck':'decks'} saved on this device`,'▱')}${destination('backups','Backups','Save a copy or restore a backup.','↥')}</section>`;
+  const modes=section==='work'?MODES:MODES.filter(m=>m.play);
+  app.innerHTML=`<p class="section-label">${section==='work'?'WORK':'PLAY'}</p>${section==='work'?'<p class="muted section-intro">Reusable decks for facilitated, family and group activities.</p>':''}<section class="list-panel">${modes.map(m=>destination(m.id,m.title,m.detail,m.icon)).join('')}</section>`;
 }
 function libraryRow(d:Deck|TabooDeck,kind:'regular'|'taboo'):string {
   const key=kind+':'+d.id,open=revealedDeck===key;
-  return `<div class="swipe-deck ${open?'revealed':''}" data-swipe-key="${esc(key)}"><button class="swipe-delete" data-swipe-delete="${esc(d.id)}" data-kind="${kind}" aria-label="Delete ${esc(d.name)}" ${open?'':'hidden'}>Delete</button><button class="menu-row swipe-front" data-${kind==='regular'?'deck':'taboo-deck'}="${esc(d.id)}"><span><strong>${esc(d.name)}</strong><small>${d.cards.length} cards</small></span><span class="arrow" aria-hidden="true">›</span></button></div>`;
+  return `<div class="swipe-deck ${open?'revealed':''}" data-swipe-key="${esc(key)}"><button class="swipe-delete" data-swipe-delete="${esc(d.id)}" data-kind="${kind}" aria-label="Delete ${esc(d.name)}" ${open?'':'hidden'}>Delete</button><button class="menu-row swipe-front" data-${kind==='regular'?'deck':'taboo-deck'}="${esc(d.id)}"><span><strong>${esc(d.name)}</strong><small>${d.cards.length} cards${kind==='regular'?` · ${(d as Deck).activities.length} activities`:''} · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</small></span><span class="arrow" aria-hidden="true">›</span></button></div>`;
 }
 function revealDeck(key:string):void {
   revealedDeck=key;
@@ -123,7 +142,7 @@ async function deleteLibraryDeck(id:string,kind:string):Promise<void>{
 function renderLibrary(): void {
   app.innerHTML=`<div class="toolbar"><span class="muted">${library.decks.length} decks</span>${button('new-deck','＋ New Deck','primary')}</div>
     ${entry==='new-deck'?`<form id="new-deck" class="panel"><h2>New Deck</h2><label for="deck-name">Deck name</label><input id="deck-name" name="name" required maxlength="120" placeholder="Celebrities"><div class="form-actions"><button class="primary">Create Deck</button>${button('cancel-edit','Cancel')}</div></form>`:''}
-    <section class="list-panel">${library.decks.length ? alphabeticalDecks(library.decks).map(d=>libraryRow(d,'regular')).join('') : '<p class="empty">Create a deck, then add cards or paste a list.</p>'}</section>`;
+    <section class="list-panel">${library.decks.length ? alphabeticalDecks(library.decks).map(d=>libraryRow(d,'regular')).join('') :  '<p class="empty">Create a deck, then add cards or paste a list.</p>'}</section><p class="section-label">MORE DECK TOOLS</p><section class="list-panel">${destination('taboo-library','Taboo Decks','Cards with five forbidden words.','◇')}${destination('backups','Backups','Export or restore your local library.','↥')}</section>`;
 }
 function editorTabs():string {
   return `<div class="segmented" role="group" aria-label="Deck content"><button data-action="editor-cards" aria-pressed="${editorSection==='cards'}">Cards</button><button data-action="editor-activities" aria-pressed="${editorSection==='activities'}">Activities</button></div>`;
@@ -136,7 +155,7 @@ function renderActivityEditor(d:Deck):void {
   let form='';
   if(entry==='activity')form=`<form id="activity-form" class="panel"><h2>${editable?'Edit':'Add'} Activity</h2><label for="activity-text">Activity template</label><textarea id="activity-text" name="text" required placeholder="I feel {card} when...">${esc(editable?.text??'')}</textarea><p class="muted">Use {card} to insert the current card text.</p><div class="form-actions"><button class="primary">Save Activity</button>${button('cancel-edit','Cancel')}${editable?button('delete-activity','Delete Activity','danger'):''}</div>${confirmActivityDelete?`<div class="delete-confirm"><p>Delete this Activity? A local restore point will be saved.</p><div class="form-actions">${button('confirm-delete-activity','Confirm Delete Activity','danger')}${button('cancel-delete-activity','Keep Activity')}</div></div>`:''}</form>`;
   if(entry==='activity-bulk')form=`<form id="activity-bulk-form" class="panel"><h2>Bulk Paste Activities</h2><label for="activity-bulk">One activity per line</label><textarea id="activity-bulk" name="text" required placeholder="I feel {card} when...&#10;Show {card} with your face.&#10;Draw what {card} looks like."></textarea><p class="muted">Use {card} to insert the current card text. Simple numbered and bulleted prefixes are removed.</p><div class="form-actions"><button class="primary">Import Activities</button>${button('cancel-edit','Cancel')}</div></form>`;
-  app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards · ${items.length} activities</span>${button('back','All Decks')}</div>${editorTabs()}<p class="muted">Activities belong to this deck and can be paired with any of its cards in Numbered Lookup. Use {card} to insert the current card text.</p><div class="actions">${button('add-activity','＋ Add Activity','primary')}${button('activity-bulk','Bulk Paste')}</div>${form}<p class="section-label">ACTIVITIES IN ORDER</p><section class="list-panel">${items.slice(activityPage*50,activityPage*50+50).map((a,i)=>`<div class="card-row ordered-row"><button class="ordered-edit" data-activity-edit="${esc(a.id)}"><span class="number">${activityPage*50+i+1}</span><span class="card-text">${esc(a.text)}</span></button>${reorderControls('activity',a.id,activityPage*50+i,items.length)}</div>`).join('')||'<p class="empty">Add an Activity or paste a list. Your cards stay as they are.</p>'}</section>${pages>1?`<p class="muted">Page ${activityPage+1} of ${pages}</p><div class="actions"><button data-action="activity-page-prev" ${activityPage===0?'disabled':''}>Previous 50</button><button data-action="activity-page-next" ${activityPage===pages-1?'disabled':''}>Next 50</button></div>`:''}`;
+  app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards · ${items.length} activities</span>${button('back','All Decks')}</div>${editorTabs()}${organization(d,'regular')}<p class="muted">Activities belong to this deck and can be paired with any of its cards in Numbered Lookup. Use {card} to insert the current card text.</p><div class="actions">${button('add-activity','＋ Add Activity','primary')}${button('activity-bulk','Bulk Paste')}</div>${form}<p class="section-label">ACTIVITIES IN ORDER</p><section class="list-panel">${items.slice(activityPage*50,activityPage*50+50).map((a,i)=>`<div class="card-row ordered-row"><button class="ordered-edit" data-activity-edit="${esc(a.id)}"><span class="number">${activityPage*50+i+1}</span><span class="card-text">${esc(a.text)}</span></button>${reorderControls('activity',a.id,activityPage*50+i,items.length)}</div>`).join('')||'<p class="empty">Add an Activity or paste a list. Your cards stay as they are.</p>'}</section>${pages>1?`<p class="muted">Page ${activityPage+1} of ${pages}</p><div class="actions"><button data-action="activity-page-prev" ${activityPage===0?'disabled':''}>Previous 50</button><button data-action="activity-page-next" ${activityPage===pages-1?'disabled':''}>Next 50</button></div>`:''}`;
 }
 
 function renderEditor(): void {
@@ -148,7 +167,7 @@ function renderEditor(): void {
   if(entry==='rename') form=`<form id="rename" class="panel"><h2>Rename Deck</h2><label for="rename-name">Deck name</label><input id="rename-name" name="name" value="${esc(d.name)}" required maxlength="120"><div class="form-actions"><button class="primary">Save Name</button>${button('cancel-edit','Cancel')}</div></form>`;
   if(entry==='card') form=`<form id="card-form" class="panel"><h2>${editable?'Edit Card':'Add Card'}</h2><label for="card-text">Word or prompt</label><textarea id="card-text" name="text" required>${editable?esc(editable.text):''}</textarea><div class="form-actions"><button class="primary">${editable?'Save Card':'Add Card'}</button>${button('cancel-edit','Cancel')}${editable?button('delete-card','Delete Card','danger'):''}</div></form>`;
   if(entry==='bulk') form=`<form id="bulk-form" class="panel"><h2>Bulk Paste</h2><p class="muted">One card per line. Simple numbered and bulleted prefixes are removed.</p><label for="bulk-text">Your list</label><textarea id="bulk-text" name="text" placeholder="1. Beyoncé&#10;2. Taylor Swift&#10;• Keanu Reeves"></textarea><p id="bulk-count" class="muted">0 cards ready</p><div class="form-actions"><button class="primary">Import Cards</button>${button('cancel-edit','Cancel')}</div></form>`;
-  app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards</span>${button('back','All Decks')}</div>${editorTabs()}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Bulk Paste')}</div>
+  app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards</span>${button('back','All Decks')}</div>${editorTabs()}${organization(d,'regular')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Bulk Paste')}</div>
     ${form}<p class="section-label">CARDS IN ORDER</p><section class="list-panel">${d.cards.slice(cardPage*50,cardPage*50+50).map((c,i)=>`<div class="card-row ordered-row"><button class="ordered-edit" data-edit="${esc(c.id)}"><span class="number">${cardPage*50+i+1}</span><span class="card-text">${esc(c.text)}</span></button>${reorderControls('card',c.id,cardPage*50+i,d.cards.length)}</div>`).join('') || '<p class="empty">No cards yet.</p>'}</section>
     ${pages>1?`<p class="muted">Page ${cardPage+1} of ${pages}</p><div class="actions"><button data-action="page-prev" ${cardPage===0?'disabled':''}>Previous 50</button><button data-action="page-next" ${cardPage===pages-1?'disabled':''}>Next 50</button></div>`:''}
     <details class="panel"><summary>Deck options</summary><div class="option-list">${button('rename-deck','Rename Deck')}${button('backup-deck','Back Up This Deck')}${button('delete-deck','Delete Deck','danger')}</div></details>`;
@@ -177,13 +196,13 @@ function renderLookup(): void {
     <section class="panel lookup-display"><span class="tag">${lookupIndex===null?'Choose a number':`Card ${lookupIndex+1} of ${d.cards.length}`}</span><div class="prompt ${current&&activity?'composed-activity':''}" aria-live="polite">${current&&activity?`<span>${activityParts(activity.text,current.text).map(part=>part.kind==='card'?`<strong>${esc(part.text)}</strong>`:`<em>${esc(part.text)}</em>`).join('')}</span>`:current?esc(current.text):'Ready when you are'}</div>${current&&activityMode==='random'&&d.activities.length>1?button('reroll-activity','↻ Reroll Activity','quiet full'):''}<div class="row"><button data-action="lookup-prev" ${lookupIndex===0?'disabled':''}>Previous</button><button data-action="lookup-next" ${lookupIndex===d.cards.length-1?'disabled':''}>Next</button>${button('lookup-random','Random')}</div></section>`:''}`;
 }
 function renderPrompts(): void {
-  const playable=alphabeticalDecks(library.decks).filter(d=>d.cards.length);
+  const pool=availableDecks(),playable=pool.visible;
   if(promptDeck!==null && !playable.some(d=>d.id===promptDeck)){promptDeck=null;promptDraw=undefined;}
   if(promptDraw){
-    app.innerHTML=`<section class="game active-game prompt-picker"><div class="game-status"><span class="tag">${esc(promptDraw.deck.name)}</span><span class="tag">${promptDeck===null?'All Decks':'One deck'}</span></div><div class="prompt" aria-live="polite">${esc(promptDraw.card.text)}</div><div class="game-controls"><div class="answer-bar">${button('prompt-choose','Decks','quiet')}${button('prompt-draw','Draw Again','primary next-card')}${button('home','Home','quiet')}</div></div></section>`;return;
+    app.innerHTML=`<section class="game active-game prompt-picker"><div class="game-status"><span class="tag">${esc(promptDraw.deck.name)}</span><span class="tag">${promptDeck===null?(showAllDecks?'All Decks':'Compatible Decks'):'One deck'}</span></div><div class="prompt" aria-live="polite">${esc(promptDraw.card.text)}</div><div class="game-controls"><div class="answer-bar">${button('prompt-choose','Decks','quiet')}${button('prompt-draw','Draw Again','primary next-card')}${button('home','Home','quiet')}</div></div></section>`;return;
   }
   const count=playable.reduce((total,d)=>total+d.cards.length,0);
-  app.innerHTML=playable.length?`<section class="panel"><label for="prompt-deck">Draw from</label><select id="prompt-deck"><option value="" ${promptDeck===null?'selected':''}>All Decks · ${count} cards</option>${playable.map(d=>`<option value="${esc(d.id)}" ${d.id===promptDeck?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`).join('')}</select>${button('prompt-draw','Draw a Prompt','primary full')}</section><details class="panel"><summary>How to play</summary><p>Act it out, draw it, or let friends ask up to 20 yes-or-no questions. One mode supplies the prompts; you choose the rules.</p><p>All Decks gives every card the same chance. Each draw is independent, so repeats are possible. The source deck appears above the word.</p></details>`:`<section class="panel"><p class="empty">Add cards in Manage Decks to draw a prompt.</p>${button('prompt-library','Manage Decks','primary full')}</section>`;
+  app.innerHTML=playable.length?`<section class="panel"><label for="prompt-deck">Draw from</label><select id="prompt-deck"><option value="" ${promptDeck===null?'selected':''}>${showAllDecks?'All Decks':'Compatible Decks'} · ${count} cards</option>${deckOptions(pool,promptDeck)}</select>${pickerEscape(pool.other.length,pool.compatible.length)}${button('prompt-draw','Draw a Prompt','primary full')}</section><details class="panel"><summary>How to play</summary><p>Act it out, draw it, or let friends ask up to 20 yes-or-no questions. One mode supplies the prompts; you choose the rules.</p><p>The combined pool gives every visible card the same chance. Each draw is independent, so repeats are possible. The source deck appears above the word.</p></details>`:`<section class="panel"><p class="empty">No compatible decks to draw from.</p>${pickerEscape(pool.other.length,pool.compatible.length)}${button('prompt-library','Manage Decks','primary full')}</section>`;
 }
 function durationPicker(value:number):string {
   const choices=[...TIMER_CHOICES];if(!choices.includes(value))choices.push(value);
@@ -214,7 +233,7 @@ function renderHeadbands():void {
 function tabooDeck():TabooDeck|undefined{return library.tabooDecks?.find(d=>d.id===tabooSelected);}
 function renderTabooLibrary():void{
   const decks=alphabeticalDecks(library.tabooDecks??[]);
-  app.innerHTML=`<div class="toolbar">${button('taboo-menu','‹ Taboo')} ${button('taboo-new','＋ New Taboo Deck','primary')}</div>${entry==='new-deck'?`<form id="taboo-new-form" class="panel"><label for="taboo-name">Taboo deck name</label><input id="taboo-name" name="name" required maxlength="120"><div class="form-actions"><button class="primary">Create Deck</button>${button('cancel-edit','Cancel')}</div></form>`:''}<p class="muted">Only Taboo uses these decks. Regular decks stay in Manage Decks.</p><section class="list-panel">${decks.map(d=>libraryRow(d,'taboo')).join('')||'<p class="empty">Create a Taboo deck to get started.</p>'}</section>`;
+  app.innerHTML=`<div class="toolbar">${button('decks-tab','‹ All Decks')} ${button('taboo-new','＋ New Taboo Deck','primary')}</div>${entry==='new-deck'?`<form id="taboo-new-form" class="panel"><label for="taboo-name">Taboo deck name</label><input id="taboo-name" name="name" required maxlength="120"><div class="form-actions"><button class="primary">Create Deck</button>${button('cancel-edit','Cancel')}</div></form>`:''}<p class="muted">Only Taboo uses these decks. Regular decks stay front-and-center in Decks.</p><section class="list-panel">${decks.map(d=>libraryRow(d,'taboo')).join('')||'<p class="empty">Create a Taboo deck to get started.</p>'}</section>`;
 }
 function renderTabooEditor():void{
   const d=tabooDeck();if(!d){route='taboo-library';render();return;}
@@ -223,13 +242,13 @@ function renderTabooEditor():void{
   if(entry==='rename')form=`<form id="taboo-rename-form" class="panel"><label for="taboo-name">Deck name</label><input id="taboo-name" name="name" value="${esc(d.name)}" required maxlength="120"><div class="form-actions"><button class="primary">Save Name</button>${button('cancel-edit','Cancel')}</div></form>`;
   if(entry==='card')form=`<form id="taboo-card-form" class="panel"><h2>${c?'Edit':'Add'} Taboo Card</h2><label for="taboo-answer">Answer</label><input id="taboo-answer" name="text" value="${esc(c?.text??'')}" required>${Array.from({length:5},(_,i)=>`<label for="forbidden-${i}">Forbidden word ${i+1}</label><input id="forbidden-${i}" name="forbidden-${i}" value="${esc(c?.forbidden[i]??'')}" required>`).join('')}<div class="form-actions"><button class="primary">Save Card</button>${button('cancel-edit','Cancel')}${c?button('taboo-delete-card','Delete','danger'):''}</div></form>`;
   if(entry==='bulk')form=`<form id="taboo-bulk-form" class="panel"><h2>Paste Taboo Cards</h2><p class="muted">One card per line. Separate the answer and five forbidden words with |.</p><label for="taboo-bulk">Cards</label><textarea id="taboo-bulk" name="text" required placeholder="Astronaut | Space | NASA | Rocket | Moon | Helmet"></textarea><p class="muted">Every line is checked before any cards are saved.</p><div class="form-actions"><button class="primary">Import Cards</button>${button('cancel-edit','Cancel')}</div></form>`;
-  app.innerHTML=`<div class="toolbar">${button('taboo-library','‹ Taboo Decks')}<span class="muted">${d.cards.length} cards</span></div><div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Paste a List')}</div>${form}<section class="list-panel">${d.cards.slice(cardPage*50,cardPage*50+50).map(c=>`<button class="menu-row" data-taboo-edit="${esc(c.id)}"><span><strong>${esc(c.text)}</strong><small>${c.forbidden.map(esc).join(' · ')}</small></span><span class="arrow">›</span></button>`).join('')||'<p class="empty">Add an answer and five forbidden words.</p>'}</section>${pages>1?`<p class="muted">Page ${cardPage+1} of ${pages}</p><div class="actions"><button data-action="page-prev" ${cardPage===0?'disabled':''}>Previous 50</button><button data-action="page-next" ${cardPage===pages-1?'disabled':''}>Next 50</button></div>`:''}<details class="panel"><summary>Deck options</summary><div class="option-list">${button('rename-deck','Rename Deck')}${button('taboo-backup','Back Up This Deck')}${button('taboo-delete','Delete Deck','danger')}</div></details>`;
+  app.innerHTML=`<div class="toolbar">${button('taboo-library','‹ Taboo Decks')}<span class="muted">${d.cards.length} cards</span></div>${organization(d,'taboo')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Paste a List')}</div>${form}<section class="list-panel">${d.cards.slice(cardPage*50,cardPage*50+50).map(c=>`<button class="menu-row" data-taboo-edit="${esc(c.id)}"><span><strong>${esc(c.text)}</strong><small>${c.forbidden.map(esc).join(' · ')}</small></span><span class="arrow">›</span></button>`).join('')||'<p class="empty">Add an answer and five forbidden words.</p>'}</section>${pages>1?`<p class="muted">Page ${cardPage+1} of ${pages}</p><div class="actions"><button data-action="page-prev" ${cardPage===0?'disabled':''}>Previous 50</button><button data-action="page-next" ${cardPage===pages-1?'disabled':''}>Next 50</button></div>`:''}<details class="panel"><summary>Deck options</summary><div class="option-list">${button('rename-deck','Rename Deck')}${button('taboo-backup','Back Up This Deck')}${button('taboo-delete','Delete Deck','danger')}</div></details>`;
 }
 function renderTaboo():void{
-  const playable=alphabeticalDecks(library.tabooDecks??[]).filter(d=>d.cards.length);
+  const pool=modeDecks(library.tabooDecks??[],'taboo',launchContext,showAllDecks),playable=pool.visible;
   if(!playable.some(d=>d.id===tabooSelected))tabooSelected=playable[0]?.id??'';
   if(!(round instanceof TabooRound)){
-    app.innerHTML=`<section class="list-panel">${destination('taboo-library','Manage Taboo Decks','Create cards with five forbidden words.','▱')}</section>${playable.length?`<form id="taboo-round-form" class="panel"><label for="taboo-picker">Taboo deck</label><select id="taboo-picker">${playable.map(d=>`<option value="${esc(d.id)}" ${d.id===tabooSelected?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`).join('')}</select><label for="taboo-team-count">Teams</label><select id="taboo-team-count">${Array.from({length:7},(_,i)=>`<option value="${i+2}" ${tabooTeams.length===i+2?'selected':''}>${i+2} teams</option>`).join('')}</select>${tabooTeams.map((name,i)=>`<label for="taboo-team-${i}">Team ${i+1} name</label><input id="taboo-team-${i}" data-taboo-team="${i}" value="${esc(name)}" required maxlength="80">`).join('')}<label for="taboo-duration">Round timer</label><select id="taboo-duration">${durationPicker(tabooDuration)}</select><label class="check"><input id="timer-sound" type="checkbox" ${timerSound?'checked':''}> Timer sound</label><button class="primary full" ${preparing?'disabled':''}>${preparing?'Preparing…':'Start Game'}</button></form>`:'<p class="empty">Create a Taboo deck and add cards to play.</p>'}<details class="panel"><summary>How to play</summary><p>Describe the bold answer without saying it or any of the five forbidden words. A player from another team watches the card and calls violations.</p><p>Correct earns 1 point. Pass earns 0. Taboo subtracts 1. Teams take turns each round. Each card appears once per round; the deck reshuffles next round. The countdown stays hidden.</p></details>`;return;
+    app.innerHTML=`<section class="list-panel">${destination('taboo-library','Manage Taboo Decks','Create cards with five forbidden words.','▱')}</section>${playable.length?`<form id="taboo-round-form" class="panel"><label for="taboo-picker">Taboo deck</label><select id="taboo-picker">${deckOptions(pool,tabooSelected)}</select>${pickerEscape(pool.other.length,pool.compatible.length)}<label for="taboo-team-count">Teams</label><select id="taboo-team-count">${Array.from({length:7},(_,i)=>`<option value="${i+2}" ${tabooTeams.length===i+2?'selected':''}>${i+2} teams</option>`).join('')}</select>${tabooTeams.map((name,i)=>`<label for="taboo-team-${i}">Team ${i+1} name</label><input id="taboo-team-${i}" data-taboo-team="${i}" value="${esc(name)}" required maxlength="80">`).join('')}<label for="taboo-duration">Round timer</label><select id="taboo-duration">${durationPicker(tabooDuration)}</select><label class="check"><input id="timer-sound" type="checkbox" ${timerSound?'checked':''}> Timer sound</label><button class="primary full" ${preparing?'disabled':''}>${preparing?'Preparing…':'Start Game'}</button></form>`:`<p class="empty">No compatible Taboo decks to select.</p>${pickerEscape(pool.other.length,pool.compatible.length)}`}<details class="panel"><summary>How to play</summary><p>Describe the bold answer without saying it or any of the five forbidden words. A player from another team watches the card and calls violations.</p><p>Correct earns 1 point. Pass earns 0. Taboo subtracts 1. Teams take turns each round. Each card appears once per round; the deck reshuffles next round. The countdown stays hidden.</p></details>`;return;
   }
   const g=round,ended=g.phase==='ended',paused=g.phase==='paused';if(ended)tabooMatch?.settle();
   app.innerHTML=`<section class="game ${ended?'':'active-game'}"><div class="game-status"><span class="tag">${esc(tabooMatch?.teams[tabooMatch.teamIndex]??'')} · Round ${tabooMatch?.number??1}</span><span id="remaining">${showCountdown?`${Math.ceil(g.remaining/1000)}s`:''}</span></div><div class="taboo-prompt"><div class="prompt" aria-live="polite">${ended?(g.reason==='complete'?'Deck complete!':g.reason==='time'?'Time’s up!':'Round ended'):paused?'Paused':esc(g.current.text)}</div>${!ended&&!paused?`<p class="forbidden-label">DON’T SAY</p><ul class="forbidden-words">${g.current.forbidden.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>`:''}</div>${ended?`<p class="result">Round score: ${g.score} · ${g.results.filter(r=>r.outcome==='Correct').length} correct · ${g.results.filter(r=>r.outcome==='Taboo').length} violations</p><section class="list-panel">${tabooMatch?.teams.map((name,i)=>`<div class="card-row"><span class="card-text">${esc(name)}</span><strong>${tabooMatch!.scores[i]}</strong></div>`).join('')}</section>${button('taboo-next-round',`Next: ${esc(tabooMatch?.teams[tabooMatch.number%tabooMatch.teams.length]??'team')}`,'primary full')}${button('finish-game','Finish Game','full quiet')}`:paused?`<div class="game-controls actions">${button('resume','Resume','primary')}${button('end-round','End Round')}</div>`:`<div class="game-controls"><div class="answer-bar taboo-controls">${button('pause','Pause','quiet')}<div class="answer-buttons">${button('taboo-correct','Correct','primary')}${button('taboo-pass','Pass')}${button('taboo-violation','Taboo','danger')}</div>${button('end-round','End','quiet')}</div></div>`}</section>`;
@@ -248,7 +267,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.7.1')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.8.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <p class="section-label">EXPERIMENT</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section><p class="muted footnote">Separate PWA experiment. Your native DeckForge app is unchanged.</p>`;
 }
 function renderStorageError(): void {
@@ -273,13 +292,16 @@ async function mutate(change: (next: Library)=>void, checkpoint=false): Promise<
     await save(next,checkpoint); library=next; render();
   } finally { saving=false; }
 }
-function navigate(target: string): void {
+function navigate(target: string,nextSection?:typeof section): void {
   if((calibrating || (round && round.phase!=='ended')) && !confirm('Leave and end the current round?')) return;
+  if(nextSection)section=nextSection;
+  if(['library','editor','taboo-library','taboo-editor'].includes(target))section='decks';
+  if(MODES.some(m=>m.id===target)){launchContext=section==='work'?'work':'play';section=launchContext;showAllDecks=false;selected='';tabooSelected='';promptDeck=null;}
   gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
   revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); window.scrollTo({top:0});
 }
 function openEntry(next: typeof entry): void {
-  confirmActivityDelete=false;entry=next; render(); app.querySelector<HTMLElement>('input,textarea')?.focus();
+  confirmActivityDelete=false;entry=next; render(); app.querySelector<HTMLElement>('form:not(#organization-form) input,form:not(#organization-form) textarea')?.focus();
 }
 async function downloadBackup(value: Library): Promise<void> {
   const name=`DeckForge-backup-${new Date().toISOString().slice(0,10)}.json`;
@@ -326,10 +348,12 @@ async function action(name: string): Promise<void> {
     case 'taboo-correct':case 'taboo-pass':case 'taboo-violation':checkRound();if(round instanceof TabooRound&&round.answer(name==='taboo-correct'?'Correct':name==='taboo-pass'?'Passed':'Taboo',performance.now())){if(name!=='taboo-pass')gameAudio.feedback(name==='taboo-correct');if(round.phase==='ended'){gameAudio.stopCountdown();releaseWake();tabooMatch?.settle();}render();}break;
     case 'taboo-next-round':if(tabooMatch&&round?.phase==='ended'&&!preparing){const token=gameGeneration;preparing=true;try{await readyAudio();if(token===gameGeneration&&!document.hidden){round=tabooMatch.start(performance.now());startCues();}}finally{preparing=false;render();}}break;
     case 'quick-rename':if(route==='editor'){editorSection='cards';openEntry('rename');document.querySelector('#rename')?.scrollIntoView({block:'start'});}else if(route==='taboo-editor'){openEntry('rename');document.querySelector('#taboo-rename-form')?.scrollIntoView({block:'start'});}break;
-    case 'home': navigate('home'); break;
+    case 'home': navigate(sectionRoot(section)); break;
     case 'settings': navigate('settings'); break;
     case 'backups': restorePoint=await recovery(); navigate('backups'); break;
-    case 'back': entry=''; editingCard=undefined; route='library'; render(); break;
+    case 'back': navigate('library'); break;
+    case 'decks-tab':navigate('library','decks');break;
+    case 'toggle-all-decks':showAllDecks=!showAllDecks;render();break;
     case 'new-deck': openEntry('new-deck'); break;
     case 'rename-deck': openEntry('rename'); break;
     case 'add-card': editingCard=undefined; openEntry('card'); break;
@@ -341,7 +365,7 @@ async function action(name: string): Promise<void> {
     case 'cancel-edit': confirmActivityDelete=false;editingActivity=undefined;editingCard=undefined; entry=''; render(); break;
     case 'page-prev': cardPage--; render(); break;
     case 'page-next': cardPage++; render(); break;
-    case 'prompt-draw': promptDraw=randomPrompt(library.decks,promptDeck);render();if(promptDraw)window.scrollTo({top:0});break;
+    case 'prompt-draw': promptDraw=randomPrompt(availableDecks().visible,promptDeck);render();if(promptDraw)window.scrollTo({top:0});break;
     case 'prompt-choose': promptDraw=undefined;render();break;
     case 'prompt-library': navigate('library');break;
     case 'lookup-prev': if(d?.cards.length)selectLookupCard(lookupIndex===null?0:Math.max(0,lookupIndex-1));break;
@@ -357,7 +381,7 @@ async function action(name: string): Promise<void> {
     case 'end-round': pauseGame();if(confirm('End this round?')){if(round instanceof HeadbandsRound||round instanceof TabooRound)round.end();else if(round)round.phase='ended';gameAudio.stop();audio.stop();render();}break;
     case 'new-round': gameGeneration++;round=undefined;gameAudio.stop();audio.stop();sensors.stop();tilt.reset();calibrating=false;render();break;
     case 'next-team-round': if(match?.scored&&!preparing){const token=gameGeneration;preparing=true;try{await readyAudio();if(token===gameGeneration&&!document.hidden&&match?.scored){round=match.start(performance.now());startCues();}}finally{preparing=false;}}break;
-    case 'finish-game': navigate('home');break;
+    case 'finish-game': navigate(sectionRoot(section));break;
     case 'forehead-ready':placement.confirmPlacement();say('Keep the phone steady at your forehead.');break;
     case 'use-buttons': if(!preparing){gameAudio.stopCountdown();placement.reset();useTilt=false;calibrating=false;sensors.stop();tilt.reset();beginHeadbands();}break;
     case 'cancel-headbands': placement.reset();gameGeneration++;calibrating=false;preparing=false;sensors.stop();tilt.reset();gameAudio.stop();releaseWake();render();break;
@@ -398,17 +422,23 @@ function audioError(error: unknown): void { audio.log(`Playback failed: ${String
 async function submit(form: HTMLFormElement): Promise<void> {
   const data=new FormData(form),text=String(data.get('text') ?? '').trim(),name=String(data.get('name') ?? '').trim(),d=deck();
   switch(form.id) {
+    case 'organization-form':{
+      const format=form.dataset.format==='taboo'?'taboo':'regular',target=format==='taboo'?tabooDeck():deck();if(!target)break;
+      const known=MODES.filter(m=>m.format===format).map(m=>m.id as string);
+      const fields=metadata(data.get('deckContext'),[...data.getAll('compatibleModes').map(String),...target.compatibleModes.filter(m=>!known.includes(m))],format);
+      await mutate(next=>{Object.assign((format==='taboo'?next.tabooDecks:next.decks)!.find(d=>d.id===target.id)!,fields);});say('Deck organization saved.');break;
+    }
     case 'activity-form':if(!text)throw new Error('Enter an Activity template.');if(d){const id=editingActivity;await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;if(id)target.activities.find(a=>a.id===id)!.text=text;else target.activities.push({id:uid(),text,createdAt:new Date().toISOString()});});entry='';editingActivity=undefined;render();say('Activity saved.');}break;
     case 'activity-bulk-form':{const lines=importLines(String(data.get('text')??''));if(!lines.length)throw new Error('Paste at least one non-empty Activity.');if(d)await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;const createdAt=new Date().toISOString();for(const text of lines)target.activities.push({id:uid(),text,createdAt});});entry='';render();say(`${lines.length} activities saved.`);break;}
 
-    case 'taboo-new-form':if(!name)throw new Error('Enter a deck name.');{const id=uid();await mutate(next=>{(next.tabooDecks??=[]).push({id,name,cards:[]});});tabooSelected=id;route='taboo-editor';entry='';cardPage=0;render();say('Taboo deck saved.');break;}
+    case 'taboo-new-form':if(!name)throw new Error('Enter a deck name.');{const id=uid();await mutate(next=>{(next.tabooDecks??=[]).push({id,name,cards:[],...metadata(undefined,undefined,'taboo')});});tabooSelected=id;route='taboo-editor';entry='';cardPage=0;render();say('Taboo deck saved.');break;}
     case 'taboo-rename-form':if(!name)throw new Error('Enter a deck name.');await mutate(next=>{next.tabooDecks!.find(d=>d.id===tabooSelected)!.name=name;});entry='';render();break;
     case 'taboo-card-form':{const value=validateTabooCard(text,Array.from({length:5},(_,i)=>String(data.get('forbidden-'+i)??'').trim()));await mutate(next=>{const d=next.tabooDecks!.find(d=>d.id===tabooSelected)!;if(editingCard)Object.assign(d.cards.find(c=>c.id===editingCard)!,value);else d.cards.push({id:uid(),...value});});entry='';editingCard=undefined;render();say('Taboo card saved.');break;}
     case 'taboo-bulk-form':{const cards=importTaboo(String(data.get('text')??''));await mutate(next=>{const target=next.tabooDecks!.find(d=>d.id===tabooSelected)!;for(const card of cards)target.cards.push({id:uid(),...card});});entry='';render();say(`${cards.length} Taboo cards saved.`);break;}
     case 'taboo-round-form':{const d=tabooDeck();if(!d||preparing)break;const names=teamNames(tabooTeams),duration=tabooDuration;roundSeconds(duration);const token=++gameGeneration;preparing=true;const sound=readyAudio();render();try{await Promise.all([sound,mutate(next=>{next.tabooTeams=names;next.tabooDuration=duration;})]);if(token!==gameGeneration||document.hidden)return;tabooMatch=new TabooGame(d.cards,names,duration);round=tabooMatch.start(performance.now());startCues();}finally{preparing=false;render();}break;}
 
     case 'new-deck': if(!name) throw new Error('Enter a deck name.'); {
-      const id=uid();await mutate(next=>next.decks.push({id,name,cards:[],activities:[]}));selected=id;route='editor';editorSection='cards';cardPage=0;entry='';render();say('Deck saved.');break;
+      const id=uid();await mutate(next=>next.decks.push({id,name,cards:[],activities:[],...metadata(undefined,undefined,'regular')}));selected=id;route='editor';editorSection='cards';cardPage=0;entry='';render();say('Deck saved.');break;
     }
     case 'rename': if(!name) throw new Error('Enter a deck name.'); if(d) await mutate(next=>{next.decks.find(x=>x.id===d.id)!.name=name;});entry='';render();say('Name saved.');break;
     case 'card-form': if(!text) throw new Error('Enter a word or prompt.');if(d) {
@@ -483,10 +513,11 @@ document.addEventListener('click',event=>{
   if(el.classList.contains('swipe-front')&&performance.now()<suppressDeckClickUntil){event.preventDefault();return;}
   if(el.dataset.swipeDelete){void deleteLibraryDeck(el.dataset.swipeDelete,el.dataset.kind??'regular').catch(error=>say(String(error)));return;}
   if(!el.closest('.swipe-deck'))revealDeck('');
-  if(el.dataset.route) { if(el.dataset.route==='backups') void action('backups').catch(error=>say(String(error)));else navigate(el.dataset.route); }
-  else if(el.dataset.tabooDeck){tabooSelected=el.dataset.tabooDeck;cardPage=0;entry='';editingCard=undefined;route='taboo-editor';render();}
+  if(el.dataset.tab){const tab=el.dataset.tab as typeof section;navigate(sectionRoot(tab),tab);}
+  else if(el.dataset.route) { if(el.dataset.route==='backups') void action('backups').catch(error=>say(String(error)));else navigate(el.dataset.route); }
+  else if(el.dataset.tabooDeck){tabooSelected=el.dataset.tabooDeck;cardPage=0;entry='';editingCard=undefined;route='taboo-editor';section='decks';render();}
   else if(el.dataset.tabooEdit){editingCard=el.dataset.tabooEdit;openEntry('card');document.querySelector('#taboo-card-form')?.scrollIntoView({block:'start',behavior:'smooth'});}
-  else if(el.dataset.deck) {editorSection='cards';editingActivity=undefined;activityPage=0;selected=el.dataset.deck;cardPage=0;entry='';editingCard=undefined;route='editor';say('');render();}
+  else if(el.dataset.deck) {editorSection='cards';editingActivity=undefined;activityPage=0;selected=el.dataset.deck;cardPage=0;entry='';editingCard=undefined;route='editor';section='decks';say('');render();}
   else if(el.dataset.activityEdit){editingActivity=el.dataset.activityEdit;openEntry('activity');document.querySelector('#activity-form')?.scrollIntoView({block:'start',behavior:'smooth'});}
   else if(el.dataset.activityMove||el.dataset.cardMove){const d=deck(),id=el.dataset.activityMove??el.dataset.cardMove,direction=el.dataset.direction==='-1'?-1:1;if(d&&id&&!entry)void mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;if(el.dataset.activityMove)target.activities=moveItem(target.activities,id,direction);else target.cards=moveItem(target.cards,id,direction);}).then(()=>say('Order saved.')).catch(error=>say(String(error)));}
   else if(el.dataset.edit) {editingCard=el.dataset.edit;openEntry('card');document.querySelector('#card-form')?.scrollIntoView({block:'start',behavior:'smooth'});}
