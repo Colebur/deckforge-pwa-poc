@@ -199,3 +199,31 @@ Teams take turns. Correct adds 1, Pass adds 0, and Taboo subtracts 1. Scores may
 Backups now use format version 3 and include both separate collections. Versions 1 and 2 and native exports remain readable. A single-deck export includes only that deck. After installing this update, use this version for new mixed backups.
 
 Check on iPhone: create and reopen a Taboo deck, play in portrait and landscape, confirm Correct/Pass/Taboo scoring, pause/resume, team rotation, final buzzer, and offline operation. Export and restore copies to confirm both collections stay separate.
+
+## Activities (0.6.0)
+The project direction is recorded in [PROJECT_CONSTITUTION.md](PROJECT_CONSTITUTION.md). The PWA remains canonical; the native app is preserved separately. No roadmap modes, backend or Capacitor integration were added.
+
+Regular decks now have `activities: Activity[]`, where an Activity is `{id, text, createdAt}`. List position supplies order; timestamps are ISO strings. Old decks load with an empty list while IDs, cards and settings stay intact. IndexedDB's database/store/key remain unchanged. State and export format are now version 4; versions 1–3, original POC exports and native exports remain readable. Newer unknown formats fail safely. Add-copy restore regenerates Activity IDs while keeping text, dates and order. Restore and single-deck exports include Activities.
+
+Manage Decks → a regular deck → Activities supports add/edit/delete, up/down ordering, and bulk paste (one template per non-empty line, using the existing prefix cleanup). Card ordering now uses the same small controls. Ordering is disabled during editing to preserve unsaved text; save/cancel first. Activity deletion asks for a second in-app confirmation and saves a local restore point.
+
+Numbered Lookup defaults to None on entry or deck change. Decks without Activities hide the Activity controls. Choose Fixed, Random or Cycle before showing a card; settings can also be changed while viewing one. Show, Previous, Next and Random each count as a selection, even if the same card is selected again. Random excludes the previous Activity when alternatives exist; a single Activity remains usable and has no reroll button. Cycle follows order and wraps. Reroll changes the instruction only. Changing mode starts a fresh Activity sequence for the current card. Leaving Lookup or reloading resets the session to None.
+
+`src/activities.ts` is a platform-neutral helper, with no storage, DOM, sensor or audio dependency. Its session snapshots templates; `renderActivity` substitutes exact `{card}` occurrences using a callback so replacement characters in card text stay literal. Unknown placeholders remain untouched. The app escapes the final result for safe plain-text display. Existing storage/audio/motion modules were reused; future Capacitor adapters do not require rewriting Activity logic.
+
+### iPhone acceptance checks
+1. Online, Settings → Check for Update. Close all DeckForge windows and reopen. Confirm 0.6.0. Keep a backup first.
+2. Open an older deck. Confirm its cards and other games still work; Lookup should show no Activity controls.
+3. Create “Feelings” with cards Frustrated, Happy, Proud. In Activities bulk paste:
+   - `I feel {card} when...`
+   - `Show {card} with your face.`
+   - `Draw {card} and describe {card} to {player}.`
+4. Edit one Activity, add another, delete it with confirmation, move the third up/down. Close/reopen and confirm the list/template/order remain. In Cards, edit and reorder a card; confirm Lookup numbers follow the saved order.
+5. Lookup → Feelings → Fixed → first Activity → Show 1, Next, Previous, Random. The instruction changes the card text but keeps its template.
+6. Choose Random, Show a card several times and reroll. With three Activities, instructions should not repeat immediately. Reroll must keep both the card and its number.
+7. Choose Cycle; select four times and confirm 1, 2, 3, 1 in the current saved Activity order. The repeated placeholder should substitute twice and `{player}` should remain visible.
+8. Choose None and confirm the instruction disappears. Switch decks or return Home/reenter and confirm None is the default. Try portrait/landscape; card text should remain dominant and controls reachable.
+9. Export a backup to Files, restore as Add copies, and check both cards and Activities in the imported deck. Existing decks and Taboo decks must remain intact. Optional Replace should be tested only after saving a separate backup.
+10. Once Settings reports offline-ready, enable Airplane Mode and turn Wi-Fi off. Fully close/reopen from the Home Screen. Repeat Lookup/Activities editing and play Catchphrase, Headbands, Prompt Picker and Taboo. Verify timer/audio/tilt on the actual phone.
+
+Possible later cleanup (requires approval): move screen rendering/event handlers from the growing `app.ts` into small modules, then define platform-service interfaces only when a real second implementation needs them. This release deliberately keeps the existing architecture.
