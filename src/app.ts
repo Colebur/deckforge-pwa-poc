@@ -1,8 +1,9 @@
+import {PromptSession} from './prompt-session.js';
 import {MODES,metadata,modeDecks,sectionRoot,type ModeId,type LaunchContext,type DeckMetadata} from './modes.js';
 import {HeadbandsSetup} from './headbands-setup.js';
 import {ActivitySession,activityParts,moveItem,type ActivityMode} from './activities.js';
 import {importTaboo,validateTabooCard,TabooRound,TabooGame} from './taboo.js';
-import { alphabeticalDecks, importLines, randomPrompt, type PromptDraw, lookup, Round, emptyLibrary, type Deck, type TabooDeck, type Library } from './model.js';
+import { alphabeticalDecks, importLines, type PromptDraw, lookup, Round, emptyLibrary, type Deck, type TabooDeck, type Library } from './model.js';
 import { load, save, recovery, type Recovery } from './storage.js';
 import { exportBackup, parseBackup, restoreBackup, MAX_BACKUP_BYTES, NewerFormatError, type BackupPreview } from './backup.js';
 import {TeamGame, HeadbandsRound, TIMER_CHOICES, defaultTeams, teamNames, roundSeconds} from './games.js';
@@ -35,7 +36,11 @@ let editorSection:'cards'|'activities'='cards';
 let editingActivity:string|undefined;
 let confirmActivityDelete=false;
 let activityPage=0;
-let promptDeck: string | null = null;
+let promptIds:Set<string>|undefined;
+let promptSearch='';
+let promptActivityMode:ActivityMode='none';
+let promptFixed:Record<string,string>={};
+let promptSession:PromptSession|undefined;
 let promptDraw: PromptDraw | undefined;
 let round: Round | HeadbandsRound | TabooRound | undefined;
 let match: TeamGame | undefined;
@@ -82,7 +87,7 @@ function deckOptions<T extends DeckMetadata & {id:string;name:string;cards:reado
   return labels.map(([label,context])=>{const decks=pool.compatible.filter(d=>d.deckContext===context);return decks.length?`<optgroup label="${label}">${decks.map(option).join('')}</optgroup>`:'';}).join('')+(showAllDecks&&pool.other.length?`<optgroup label="Other decks — not assigned to this mode">${pool.other.map(option).join('')}</optgroup>`:'');
 }
 function pickerEscape(other:number,compatible:number):string {
-  return `<p class="muted picker-help">${showAllDecks?'Showing all non-empty decks for this card format.':compatible?'Compatible decks, recommended for '+(launchContext==='play'?'Play':'Work')+'.':other?'No compatible decks yet. Show all to try another deck, or edit Available in from Decks.':'Add cards in Decks to make a deck playable.'}</p>${other?button('toggle-all-decks',showAllDecks?'Show Compatible Decks':`Show All Decks (${other} more)`,'quiet picker-escape'):''}`;
+  return `<p class="muted picker-help">${showAllDecks?'Showing all non-empty decks for this card format.':compatible?'Compatible decks, recommended for '+(launchContext==='play'?'Play':'Work')+'.':other?'No compatible decks yet. Show all to try another deck, or edit Available in from Decks.':currentMode()==='lookup'?'Create or edit a deck to contain exactly 54 cards.':'Add cards in Decks to make a deck playable.'}</p>${other?button('toggle-all-decks',showAllDecks?'Show Compatible Decks':`Show All Decks (${other} more)`,'quiet picker-escape'):''}`;
 }
 function picker(): string {
   const pool=availableDecks();
@@ -90,10 +95,11 @@ function picker(): string {
   return (pool.visible.length?`<label for="deck-picker">Deck</label><select id="deck-picker">${deckOptions(pool,selected)}</select>`:'<p class="empty">No decks to select.</p>')+pickerEscape(pool.other.length,pool.compatible.length);
 }
 function organization(d:Deck|TabooDeck,format:'regular'|'taboo'):string {
-  return `<details class="panel deck-organization"><summary>Deck organization · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</summary><form id="organization-form" data-format="${format}"><fieldset><legend>Best suited for</legend><div class="context-options">${['play','work','both'].map(c=>`<label><input type="radio" name="deckContext" value="${c}" ${d.deckContext===c?'checked':''}> ${c==='both'?'Both':c==='play'?'Play':'Work'}</label>`).join('')}</div></fieldset><fieldset><legend>Available in</legend>${MODES.filter(m=>m.format===format).map(m=>`<label class="check"><input type="checkbox" name="compatibleModes" value="${m.id}" ${d.compatibleModes.includes(m.id)?'checked':''}> ${m.title}</label>`).join('')}</fieldset><p class="muted">Context recommends decks; it never restricts access. Unchecked modes can still find this deck with Show All Decks.${format==='taboo'?' Taboo cards require five forbidden words and use their separate editor.':''}</p><button class="primary full">Save Organization</button></form></details>`;
+  return `<details class="panel deck-organization"><summary>Deck organization · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</summary><form id="organization-form" data-format="${format}"><fieldset><legend>Best suited for</legend><div class="context-options">${['play','work','both'].map(c=>`<label><input type="radio" name="deckContext" value="${c}" ${d.deckContext===c?'checked':''}> ${c==='both'?'Both':c==='play'?'Play':'Work'}</label>`).join('')}</div></fieldset><fieldset><legend>Available in</legend>${MODES.filter(m=>m.format===format).map(m=>`<label class="check"><input type="checkbox" name="compatibleModes" value="${m.id}" ${d.compatibleModes.includes(m.id)?'checked':''} ${m.id==='lookup'&&d.cards.length!==54?'disabled':''}> ${m.title}${m.id==='lookup'&&d.cards.length!==54?' — requires exactly 54 cards':''}</label>`).join('')}</fieldset><p class="muted">Context recommends decks; it never restricts access. Unchecked modes can still find this deck with Show All Decks when its card format and size are valid. Jenga requires 54 cards; an existing assignment stays saved but is unavailable at other sizes.${format==='taboo'?' Taboo cards require five forbidden words and use their separate editor.':''}</p><button class="primary full">Save Organization</button></form></details>`;
 }
 function render(): void {
   const playing=(['catchphrase','headbands','taboo'].includes(route) && (calibrating || (!!round && round.phase!=='ended'))) || (route==='prompts' && !!promptDraw); 
+  document.body.dataset.context=section;
   document.body.classList.toggle('playing',playing);
   document.body.classList.toggle('home-screen',route==='home');
   document.body.classList.toggle('has-tabs',!playing);
@@ -101,7 +107,7 @@ function render(): void {
   tabs.innerHTML=[['play','▶','Play'],['work','▦','Work'],['decks','▱','Decks']].map(([id,icon,title])=>`<button data-tab="${id}" ${section===id?'aria-current="page"':''}><span aria-hidden="true">${icon}</span>${title}</button>`).join('');
   document.body.classList.toggle('lookup-screen',route==='lookup');
   document.querySelector<HTMLButtonElement>('#rename-button')!.hidden=!['editor','taboo-editor'].includes(route)||!!loadFailure;
-  document.querySelector<HTMLElement>('#page-title')!.textContent=({home:section==='work'?'Work':'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Numbered Lookup',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
+  document.querySelector<HTMLElement>('#page-title')!.textContent=({home:section==='work'?'Work':'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Jenga',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
   document.querySelector<HTMLButtonElement>('#home-button')!.hidden=route==='home';
   const back=document.querySelector<HTMLButtonElement>('#home-button')!;
   back.dataset.action=route==='editor'?'back':route==='taboo-editor'?'taboo-library':'home';
@@ -155,7 +161,7 @@ function renderActivityEditor(d:Deck):void {
   let form='';
   if(entry==='activity')form=`<form id="activity-form" class="panel"><h2>${editable?'Edit':'Add'} Activity</h2><label for="activity-text">Activity template</label><textarea id="activity-text" name="text" required placeholder="I feel {card} when...">${esc(editable?.text??'')}</textarea><p class="muted">Use {card} to insert the current card text.</p><div class="form-actions"><button class="primary">Save Activity</button>${button('cancel-edit','Cancel')}${editable?button('delete-activity','Delete Activity','danger'):''}</div>${confirmActivityDelete?`<div class="delete-confirm"><p>Delete this Activity? A local restore point will be saved.</p><div class="form-actions">${button('confirm-delete-activity','Confirm Delete Activity','danger')}${button('cancel-delete-activity','Keep Activity')}</div></div>`:''}</form>`;
   if(entry==='activity-bulk')form=`<form id="activity-bulk-form" class="panel"><h2>Bulk Paste Activities</h2><label for="activity-bulk">One activity per line</label><textarea id="activity-bulk" name="text" required placeholder="I feel {card} when...&#10;Show {card} with your face.&#10;Draw what {card} looks like."></textarea><p class="muted">Use {card} to insert the current card text. Simple numbered and bulleted prefixes are removed.</p><div class="form-actions"><button class="primary">Import Activities</button>${button('cancel-edit','Cancel')}</div></form>`;
-  app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards · ${items.length} activities</span>${button('back','All Decks')}</div>${editorTabs()}${organization(d,'regular')}<p class="muted">Activities belong to this deck and can be paired with any of its cards in Numbered Lookup. Use {card} to insert the current card text.</p><div class="actions">${button('add-activity','＋ Add Activity','primary')}${button('activity-bulk','Bulk Paste')}</div>${form}<p class="section-label">ACTIVITIES IN ORDER</p><section class="list-panel">${items.slice(activityPage*50,activityPage*50+50).map((a,i)=>`<div class="card-row ordered-row"><button class="ordered-edit" data-activity-edit="${esc(a.id)}"><span class="number">${activityPage*50+i+1}</span><span class="card-text">${esc(a.text)}</span></button>${reorderControls('activity',a.id,activityPage*50+i,items.length)}</div>`).join('')||'<p class="empty">Add an Activity or paste a list. Your cards stay as they are.</p>'}</section>${pages>1?`<p class="muted">Page ${activityPage+1} of ${pages}</p><div class="actions"><button data-action="activity-page-prev" ${activityPage===0?'disabled':''}>Previous 50</button><button data-action="activity-page-next" ${activityPage===pages-1?'disabled':''}>Next 50</button></div>`:''}`;
+  app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards · ${items.length} activities</span>${button('back','All Decks')}</div>${editorTabs()}${organization(d,'regular')}<p class="muted">Activities belong to this deck and can be paired with any of its cards in Jenga or Prompt Picker. Use {card} to insert the current card text.</p><div class="actions">${button('add-activity','＋ Add Activity','primary')}${button('activity-bulk','Bulk Paste')}</div>${form}<p class="section-label">ACTIVITIES IN ORDER</p><section class="list-panel">${items.slice(activityPage*50,activityPage*50+50).map((a,i)=>`<div class="card-row ordered-row"><button class="ordered-edit" data-activity-edit="${esc(a.id)}"><span class="number">${activityPage*50+i+1}</span><span class="card-text">${esc(a.text)}</span></button>${reorderControls('activity',a.id,activityPage*50+i,items.length)}</div>`).join('')||'<p class="empty">Add an Activity or paste a list. Your cards stay as they are.</p>'}</section>${pages>1?`<p class="muted">Page ${activityPage+1} of ${pages}</p><div class="actions"><button data-action="activity-page-prev" ${activityPage===0?'disabled':''}>Previous 50</button><button data-action="activity-page-next" ${activityPage===pages-1?'disabled':''}>Next 50</button></div>`:''}`;
 }
 
 function renderEditor(): void {
@@ -186,23 +192,32 @@ function selectLookupCard(index:number):void {
   if(!lookupActivity)configureLookup();
   lookupIndex=index;lookupActivity!.select();render();say('');
 }
+function cardDisplay(text:string,activity?:{text:string}):string {
+  return activity?`<span>${activityParts(activity.text,text).map(part=>part.kind==='card'?`<strong>${esc(part.text)}</strong>`:`<em>${esc(part.text)}</em>`).join('')}</span>`:esc(text);
+}
+function activityChoices(id:string,value:ActivityMode):string {
+  return `<label for="${id}">Activity mode</label><select id="${id}">${[['none','None — card only'],['fixed','Fixed / Choose One'],['random','Random'],['cycle','Cycle — in list order']].map(([key,label])=>`<option value="${key}" ${value===key?'selected':''}>${label}</option>`).join('')}</select>`;
+}
 function renderLookup(): void {
-  const choose=picker(),d=deck();
+  const choose=picker()+'<p class="muted">Jenga requires exactly 54 cards, in block-number order.</p>',d=deck();
   const current=lookupIndex===null?undefined:d?.cards[lookupIndex];
   const activity=lookupActivity?.current;
-  const setup=d?.activities.length?`<label for="activity-mode">Activity mode</label><select id="activity-mode"><option value="none" ${activityMode==='none'?'selected':''}>None — card only</option><option value="fixed" ${activityMode==='fixed'?'selected':''}>Fixed / Choose One</option><option value="random" ${activityMode==='random'?'selected':''}>Random</option><option value="cycle" ${activityMode==='cycle'?'selected':''}>Cycle — in list order</option></select>${activityMode==='fixed'?`<label for="fixed-activity">Use this Activity</label><select id="fixed-activity">${d.activities.map((a,i)=>`<option value="${esc(a.id)}" ${a.id===fixedActivityId?'selected':''}>${i+1}. ${esc(a.text)}</option>`).join('')}</select>`:''}<p class="muted activity-help">${activityMode==='random'?'Each selection picks an Activity without repeating the last one when possible.':activityMode==='cycle'?'Each selection advances one Activity, then wraps back to the first.':activityMode==='fixed'?'The same Activity accompanies every card.':'Shows the card by itself.'}</p>`:'';
+  const setup=d?.activities.length?`${activityChoices('activity-mode',activityMode)}${activityMode==='fixed'?`<label for="fixed-activity">Use this Activity</label><select id="fixed-activity">${d.activities.map((a,i)=>`<option value="${esc(a.id)}" ${a.id===fixedActivityId?'selected':''}>${i+1}. ${esc(a.text)}</option>`).join('')}</select>`:''}`:'';
   app.innerHTML=`<section class="panel compact lookup-setup">${choose}${setup}</section>${d?.cards.length?`
-    <form id="lookup-form" class="number-form"><label for="item-number">Card number · 1–${d.cards.length}</label><div class="row"><input id="item-number" name="number" type="text" inputmode="numeric" pattern="[0-9]+" value="${lookupIndex===null?'':lookupIndex+1}" required><button class="narrow primary">Show</button></div></form>
-    <section class="panel lookup-display"><span class="tag">${lookupIndex===null?'Choose a number':`Card ${lookupIndex+1} of ${d.cards.length}`}</span><div class="prompt ${current&&activity?'composed-activity':''}" aria-live="polite">${current&&activity?`<span>${activityParts(activity.text,current.text).map(part=>part.kind==='card'?`<strong>${esc(part.text)}</strong>`:`<em>${esc(part.text)}</em>`).join('')}</span>`:current?esc(current.text):'Ready when you are'}</div>${current&&activityMode==='random'&&d.activities.length>1?button('reroll-activity','↻ Reroll Activity','quiet full'):''}<div class="row"><button data-action="lookup-prev" ${lookupIndex===0?'disabled':''}>Previous</button><button data-action="lookup-next" ${lookupIndex===d.cards.length-1?'disabled':''}>Next</button>${button('lookup-random','Random')}</div></section>`:''}`;
+    <form id="lookup-form" class="number-form"><label for="item-number">Block number · 1–54</label><div class="row"><input id="item-number" name="number" type="text" inputmode="numeric" pattern="[0-9]+" value="${lookupIndex===null?'':lookupIndex+1}" required><button class="narrow primary">Show</button></div></form>
+    <section class="panel lookup-display"><span class="tag">${lookupIndex===null?'Choose a number':`Card ${lookupIndex+1} of ${d.cards.length}`}</span><div class="prompt ${current&&activity?'composed-activity':''}" aria-live="polite">${current?cardDisplay(current.text,activity):'Ready when you are'}</div>${current&&activityMode==='random'&&d.activities.length>1?button('reroll-activity','↻ Reroll Activity','quiet full'):''}<div class="row"><button data-action="lookup-prev" ${lookupIndex===0?'disabled':''}>Previous</button><button data-action="lookup-next" ${lookupIndex===d.cards.length-1?'disabled':''}>Next</button>${button('lookup-random','Random')}</div></section>`:''}`;
 }
 function renderPrompts(): void {
   const pool=availableDecks(),playable=pool.visible;
-  if(promptDeck!==null && !playable.some(d=>d.id===promptDeck)){promptDeck=null;promptDraw=undefined;}
+  if(promptIds===undefined)promptIds=new Set(pool.compatible.map(d=>d.id));
+  promptIds=new Set([...promptIds].filter(id=>playable.some(d=>d.id===id)));
+  const chosen=playable.filter(d=>promptIds!.has(d.id));
   if(promptDraw){
-    app.innerHTML=`<section class="game active-game prompt-picker"><div class="game-status"><span class="tag">${esc(promptDraw.deck.name)}</span><span class="tag">${promptDeck===null?(showAllDecks?'All Decks':'Compatible Decks'):'One deck'}</span></div><div class="prompt" aria-live="polite">${esc(promptDraw.card.text)}</div><div class="game-controls"><div class="answer-bar">${button('prompt-choose','Decks','quiet')}${button('prompt-draw','Draw Again','primary next-card')}${button('home','Home','quiet')}</div></div></section>`;return;
+    const activity=promptSession?.activity;
+    app.innerHTML=`<section class="game active-game prompt-picker"><div class="game-status"><span class="tag">${esc(promptDraw.deck.name)}</span><span class="tag">${chosen.length} selected decks</span></div><div class="prompt ${activity?'composed-activity':''}" aria-live="polite">${cardDisplay(promptDraw.card.text,activity)}</div><div class="game-controls">${activity&&promptActivityMode==='random'&&promptDraw.deck.activities.length>1?button('prompt-reroll','↻ Reroll Activity','quiet full'):''}<div class="answer-bar">${button('prompt-choose','Setup','quiet')}${button('prompt-draw','Draw Again','primary next-card')}${button('home','Work','quiet')}</div></div></section>`;return;
   }
-  const count=playable.reduce((total,d)=>total+d.cards.length,0);
-  app.innerHTML=playable.length?`<section class="panel"><label for="prompt-deck">Draw from</label><select id="prompt-deck"><option value="" ${promptDeck===null?'selected':''}>${showAllDecks?'All Decks':'Compatible Decks'} · ${count} cards</option>${deckOptions(pool,promptDeck)}</select>${pickerEscape(pool.other.length,pool.compatible.length)}${button('prompt-draw','Draw a Prompt','primary full')}</section><details class="panel"><summary>How to play</summary><p>Act it out, draw it, or let friends ask up to 20 yes-or-no questions. One mode supplies the prompts; you choose the rules.</p><p>The combined pool gives every visible card the same chance. Each draw is independent, so repeats are possible. The source deck appears above the word.</p></details>`:`<section class="panel"><p class="empty">No compatible decks to draw from.</p>${pickerEscape(pool.other.length,pool.compatible.length)}${button('prompt-library','Manage Decks','primary full')}</section>`;
+  const withActivities=chosen.filter(d=>d.activities.length);
+  app.innerHTML=`<section class="panel"><h2>Choose decks</h2>${playable.length?`<label for="prompt-search">Find a deck</label><input id="prompt-search" type="search" value="${esc(promptSearch)}" placeholder="Search deck names"><div class="actions">${button('prompt-select-all','Select Compatible')}${button('prompt-clear','Clear')}</div><fieldset class="prompt-deck-list" aria-label="Prompt decks">${playable.map(d=>`<label class="check" data-prompt-name="${esc(d.name.toLocaleLowerCase())}" ${d.name.toLocaleLowerCase().includes(promptSearch.toLocaleLowerCase())?'':'hidden'}><input type="checkbox" data-prompt-id="${esc(d.id)}" ${promptIds!.has(d.id)?'checked':''}><span>${esc(d.name)}<small>${d.cards.length} cards · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</small></span></label>`).join('')}</fieldset>`:'<p>No eligible decks yet.</p>'}${pickerEscape(pool.other.length,pool.compatible.length)}<p class="muted">${chosen.length} decks selected · each deck has an equal chance.</p>${withActivities.length?`${activityChoices('prompt-activity-mode',promptActivityMode)}${promptActivityMode==='fixed'?withActivities.map(d=>`<label for="prompt-fixed-${esc(d.id)}">${esc(d.name)} Activity</label><select id="prompt-fixed-${esc(d.id)}" data-prompt-fixed="${esc(d.id)}">${d.activities.map(a=>`<option value="${esc(a.id)}" ${(promptFixed[d.id]??d.activities[0]?.id)===a.id?'selected':''}>${esc(a.text)}</option>`).join('')}</select>`).join(''):''}<p class="muted">Activities always come from the card’s source deck. Decks without Activities show the card alone.</p>`:''}<button type="button" data-action="prompt-draw" class="primary full" ${chosen.length?'':'disabled'}>Draw a Prompt</button></section><details class="panel"><summary>How to use</summary><p>Draw for group discussion, acting, drawing or guessing. Select one or more decks. Each deck has an equal chance, regardless of size. Random and Cycle Activities keep separate state for each source deck; Fixed lets you choose one per deck.</p></details>`;
 }
 function durationPicker(value:number):string {
   const choices=[...TIMER_CHOICES];if(!choices.includes(value))choices.push(value);
@@ -296,7 +311,7 @@ function navigate(target: string,nextSection?:typeof section): void {
   if((calibrating || (round && round.phase!=='ended')) && !confirm('Leave and end the current round?')) return;
   if(nextSection)section=nextSection;
   if(['library','editor','taboo-library','taboo-editor'].includes(target))section='decks';
-  if(MODES.some(m=>m.id===target)){launchContext=section==='work'?'work':'play';section=launchContext;showAllDecks=false;selected='';tabooSelected='';promptDeck=null;}
+  if(MODES.some(m=>m.id===target)){launchContext=(target==='lookup'||target==='prompts'||section==='work')?'work':'play';section=launchContext;showAllDecks=false;selected='';tabooSelected='';promptIds=undefined;promptSearch='';promptActivityMode='none';promptFixed={};promptSession=undefined;}
   gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
   revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); window.scrollTo({top:0});
 }
@@ -365,8 +380,11 @@ async function action(name: string): Promise<void> {
     case 'cancel-edit': confirmActivityDelete=false;editingActivity=undefined;editingCard=undefined; entry=''; render(); break;
     case 'page-prev': cardPage--; render(); break;
     case 'page-next': cardPage++; render(); break;
-    case 'prompt-draw': promptDraw=randomPrompt(availableDecks().visible,promptDeck);render();if(promptDraw)window.scrollTo({top:0});break;
-    case 'prompt-choose': promptDraw=undefined;render();break;
+    case 'prompt-draw': if(!promptSession)promptSession=new PromptSession(availableDecks().visible.filter(d=>promptIds?.has(d.id)),promptActivityMode,promptFixed);promptDraw=promptSession.draw();render();if(promptDraw)window.scrollTo({top:0});break;
+    case 'prompt-reroll':promptSession?.reroll();render();break;
+    case 'prompt-select-all':promptIds=new Set(availableDecks().compatible.map(d=>d.id));promptSession=undefined;render();break;
+    case 'prompt-clear':promptIds=new Set();promptSession=undefined;render();break;
+    case 'prompt-choose': promptDraw=undefined;promptSession=undefined;render();break;
     case 'prompt-library': navigate('library');break;
     case 'lookup-prev': if(d?.cards.length)selectLookupCard(lookupIndex===null?0:Math.max(0,lookupIndex-1));break;
     case 'lookup-next': if(d?.cards.length)selectLookupCard(lookupIndex===null?0:Math.min(d.cards.length-1,lookupIndex+1));break;
@@ -425,7 +443,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
     case 'organization-form':{
       const format=form.dataset.format==='taboo'?'taboo':'regular',target=format==='taboo'?tabooDeck():deck();if(!target)break;
       const known=MODES.filter(m=>m.format===format).map(m=>m.id as string);
-      const fields=metadata(data.get('deckContext'),[...data.getAll('compatibleModes').map(String),...target.compatibleModes.filter(m=>!known.includes(m))],format);
+      const fields=metadata(data.get('deckContext'),[...(target.cards.length!==54&&target.compatibleModes.includes('lookup')?['lookup']:[]),...data.getAll('compatibleModes').map(String),...target.compatibleModes.filter(m=>!known.includes(m))],format);
       await mutate(next=>{Object.assign((format==='taboo'?next.tabooDecks:next.decks)!.find(d=>d.id===target.id)!,fields);});say('Deck organization saved.');break;
     }
     case 'activity-form':if(!text)throw new Error('Enter an Activity template.');if(d){const id=editingActivity;await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;if(id)target.activities.find(a=>a.id===id)!.text=text;else target.activities.push({id:uid(),text,createdAt:new Date().toISOString()});});entry='';editingActivity=undefined;render();say('Activity saved.');}break;
@@ -438,7 +456,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
     case 'taboo-round-form':{const d=tabooDeck();if(!d||preparing)break;const names=teamNames(tabooTeams),duration=tabooDuration;roundSeconds(duration);const token=++gameGeneration;preparing=true;const sound=readyAudio();render();try{await Promise.all([sound,mutate(next=>{next.tabooTeams=names;next.tabooDuration=duration;})]);if(token!==gameGeneration||document.hidden)return;tabooMatch=new TabooGame(d.cards,names,duration);round=tabooMatch.start(performance.now());startCues();}finally{preparing=false;render();}break;}
 
     case 'new-deck': if(!name) throw new Error('Enter a deck name.'); {
-      const id=uid();await mutate(next=>next.decks.push({id,name,cards:[],activities:[],...metadata(undefined,undefined,'regular')}));selected=id;route='editor';editorSection='cards';cardPage=0;entry='';render();say('Deck saved.');break;
+      const id=uid();await mutate(next=>next.decks.push({id,name,cards:[],activities:[],...metadata(undefined,MODES.filter(m=>m.format==='regular'&&m.id!=='lookup').map(m=>m.id),'regular')}));selected=id;route='editor';editorSection='cards';cardPage=0;entry='';render();say('Deck saved.');break;
     }
     case 'rename': if(!name) throw new Error('Enter a deck name.'); if(d) await mutate(next=>{next.decks.find(x=>x.id===d.id)!.name=name;});entry='';render();say('Name saved.');break;
     case 'card-form': if(!text) throw new Error('Enter a word or prompt.');if(d) {
@@ -448,7 +466,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
       const lines=importLines(String(data.get('text') ?? ''));if(!lines.length) throw new Error('Paste at least one non-empty line.');
       if(d) await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;for(const text of lines)target.cards.push({id:uid(),text});});entry='';render();say(`${lines.length} cards saved.`);break;
     }
-    case 'lookup-form':if(d)selectLookupCard(lookup(d.cards,String(data.get('number'))));break;
+    case 'lookup-form':if(d?.cards.length===54)selectLookupCard(lookup(d.cards,String(data.get('number'))));break;
     case 'round-form': if(d && !preparing){
       const names=teamNames(draftTeams),duration=draftDuration;roundSeconds(duration);
       timerSound=document.querySelector<HTMLInputElement>('#timer-sound')!.checked;
@@ -464,7 +482,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
   }
 }
 app.addEventListener('submit',event=>{event.preventDefault();if(event.target instanceof HTMLFormElement) void submit(event.target).catch(error=>say(`Could not save: ${String(error)}`));});
-app.addEventListener('input',event=>{if(event.target instanceof HTMLInputElement&&event.target.dataset.tabooTeam!==undefined)tabooTeams[Number(event.target.dataset.tabooTeam)]=event.target.value;if(event.target instanceof HTMLInputElement && event.target.dataset.team!==undefined)draftTeams[Number(event.target.dataset.team)]=event.target.value;if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent=`${importLines(event.target.value).length} cards ready`;});
+app.addEventListener('input',event=>{if(event.target instanceof HTMLInputElement&&event.target.id==='prompt-search'){promptSearch=event.target.value;const term=promptSearch.toLocaleLowerCase();app.querySelectorAll<HTMLElement>('[data-prompt-name]').forEach(el=>{el.hidden=!el.dataset.promptName!.includes(term);});}if(event.target instanceof HTMLInputElement&&event.target.dataset.tabooTeam!==undefined)tabooTeams[Number(event.target.dataset.tabooTeam)]=event.target.value;if(event.target instanceof HTMLInputElement && event.target.dataset.team!==undefined)draftTeams[Number(event.target.dataset.team)]=event.target.value;if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent=`${importLines(event.target.value).length} cards ready`;});
 app.addEventListener('change',event=>{
   const el=event.target;
   if(el instanceof HTMLSelectElement&&el.id==='activity-mode'){activityMode=el.value as ActivityMode;configureLookup();render();}
@@ -477,7 +495,9 @@ app.addEventListener('change',event=>{
   if(el instanceof HTMLSelectElement && el.id==='head-duration')headDuration=Number(el.value);
   if(el instanceof HTMLInputElement && el.id==='timer-sound')timerSound=el.checked;
   if(el instanceof HTMLInputElement && el.id==='use-tilt')useTilt=el.checked;
-  if(el instanceof HTMLSelectElement && el.id==='prompt-deck'){promptDeck=el.value || null;promptDraw=undefined;render();}
+  if(el instanceof HTMLInputElement&&el.dataset.promptId){if(el.checked)promptIds?.add(el.dataset.promptId);else promptIds?.delete(el.dataset.promptId);promptSession=undefined;render();}
+  if(el instanceof HTMLSelectElement&&el.id==='prompt-activity-mode'){promptActivityMode=el.value as ActivityMode;promptSession=undefined;render();}
+  if(el instanceof HTMLSelectElement&&el.dataset.promptFixed){promptFixed[el.dataset.promptFixed]=el.value;promptSession=undefined;}
   if(el instanceof HTMLSelectElement && el.id==='deck-picker') {selected=el.value;resetLookup();render();}
   if(el instanceof HTMLSelectElement && el.id==='restore-mode') {restoreMode=el.value==='replace'?'replace':'add';render();}
   if(el instanceof HTMLInputElement && el.id==='background-audio') audio.keepInBackground=el.checked;

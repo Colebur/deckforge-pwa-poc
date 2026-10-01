@@ -4,11 +4,11 @@ import {ActivitySession,renderActivity,moveItem} from '../dist/activities.js';
 import {decodeState,encodeState,parseBackup,exportBackup,restoreBackup} from '../dist/backup.js';
 const activities=['I feel {card} when...','Show {card} with your face.','Draw {card}.'].map((text,i)=>({id:`activity-${i}`,text,createdAt:'2026-09-30T00:00:00.000Z'}));
 const legacy={decks:[{id:'deck',name:'Feelings',cards:[{id:'card',text:'Frustrated'}]}],duration:0,probe:null};
-const library={...legacy,decks:[{...legacy.decks[0],activities,deckContext:'both',compatibleModes:['lookup','catchphrase','headbands','prompts']}]};
+const library={...legacy,decks:[{...legacy.decks[0],activities,deckContext:'both',compatibleModes:['prompts','catchphrase','headbands']}]};
 test('all old state/backup versions safely add empty Activities without changing cards',()=>{
   for(const version of [1,2,3]){
     const state=decodeState({format:'deckforge-pwa-state',version,library:legacy});
-    assert.deepEqual(state.decks[0],{...legacy.decks[0],activities:[],deckContext:'both',compatibleModes:['lookup','catchphrase','headbands','prompts']});
+    assert.deepEqual(state.decks[0],{...legacy.decks[0],activities:[],deckContext:'both',compatibleModes:['prompts','catchphrase','headbands']});
     assert.deepEqual(parseBackup(JSON.stringify({format:'deckforge-pwa-backup',version,library:legacy})).library,state);
   }
   assert.deepEqual(decodeState(legacy).decks[0].activities,[]);
