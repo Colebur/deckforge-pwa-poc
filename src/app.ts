@@ -1,4 +1,5 @@
-import { importLines, randomPrompt, type PromptDraw, lookup, Round, emptyLibrary, type Deck, type Library } from './model.js';
+import {importTaboo,validateTabooCard,TabooRound,TabooGame} from './taboo.js';
+import { importLines, randomPrompt, type PromptDraw, lookup, Round, emptyLibrary, type Deck, type TabooDeck, type Library } from './model.js';
 import { load, save, recovery, type Recovery } from './storage.js';
 import { exportBackup, parseBackup, restoreBackup, MAX_BACKUP_BYTES, NewerFormatError, type BackupPreview } from './backup.js';
 import {TeamGame, HeadbandsRound, TIMER_CHOICES, defaultTeams, teamNames, roundSeconds} from './games.js';
@@ -18,8 +19,10 @@ let selected = '';
 let lookupIndex: number | null = null;
 let promptDeck: string | null = null;
 let promptDraw: PromptDraw | undefined;
-let round: Round | HeadbandsRound | undefined;
+let round: Round | HeadbandsRound | TabooRound | undefined;
 let match: TeamGame | undefined;
+let tabooSelected="",tabooTeams=defaultTeams(),tabooDuration=0;
+let tabooMatch:TabooGame|undefined;
 let draftTeams=defaultTeams();
 let draftDuration=0;
 let headDuration=60;
@@ -60,10 +63,10 @@ function picker(): string {
   return `<label for="deck-picker">Deck</label><select id="deck-picker">${playable.map(d=>`<option value="${esc(d.id)}" ${d.id===selected?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`).join('')}</select>`;
 }
 function render(): void {
-  const playing=(['catchphrase','headbands'].includes(route) && (calibrating || (!!round && round.phase!=='ended'))) || (route==='prompts' && !!promptDraw); 
+  const playing=(['catchphrase','headbands','taboo'].includes(route) && (calibrating || (!!round && round.phase!=='ended'))) || (route==='prompts' && !!promptDraw); 
   document.body.classList.toggle('playing',playing);
   document.body.classList.toggle('home-screen',route==='home');
-  document.querySelector<HTMLElement>('#page-title')!.textContent=({home:'DeckForge',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Numbered Lookup',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
+  document.querySelector<HTMLElement>('#page-title')!.textContent=({home:'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Numbered Lookup',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
   document.querySelector<HTMLButtonElement>('#home-button')!.hidden=route==='home';
   document.querySelector<HTMLButtonElement>('#settings-button')!.hidden=route==='settings' || !!loadFailure;
   document.querySelector<HTMLElement>('footer')!.hidden=!['settings','lab'].includes(route);
@@ -75,12 +78,15 @@ function render(): void {
   else if(route==='prompts') renderPrompts();
   else if(route==='catchphrase') renderCatchphrase();
   else if(route==='headbands') renderHeadbands();
+  else if(route==='taboo') renderTaboo();
+  else if(route==='taboo-library') renderTabooLibrary();
+  else if(route==='taboo-editor') renderTabooEditor();
   else if(route==='backups') renderBackups();
   else if(route==='settings') renderSettings();
   else renderLab();
 }
 function renderHome(): void {
-  app.innerHTML=`<p class="section-label">PLAY</p><section class="list-panel">${destination('catchphrase','Catchphrase','Give clues. Guess the word. Pass the phone.','◷')}${destination('headbands','Headbands','Hold it at your forehead. Tilt to answer.','▱')}${destination('prompts','Prompt Picker','Charades / Pictionary / 20 Questions','✦')}${destination('lookup','Numbered Lookup / Jenga','Find a card by its number, or pick at random.','#')}</section>
+  app.innerHTML=`<p class="section-label">PLAY</p><section class="list-panel">${destination('catchphrase','Catchphrase','Give clues. Guess the word. Pass the phone.','◷')}${destination('headbands','Headbands','Hold it at your forehead. Tilt to answer.','▱')}${destination('prompts','Prompt Picker','Charades / Pictionary / 20 Questions','✦')}${destination('taboo','Taboo','Describe the word. Avoid the forbidden words.','◇')}${destination('lookup','Numbered Lookup / Jenga','Find a card by its number, or pick at random.','#')}</section>
     <p class="section-label">YOUR DECKS</p><section class="list-panel">${destination('library','Manage Decks',`${library.decks.length} ${library.decks.length===1?'deck':'decks'} saved on this device`,'▱')}${destination('backups','Backups','Save a copy or restore a backup.','↥')}</section>`;
 }
 function renderLibrary(): void {
@@ -140,19 +146,44 @@ function renderHeadbands():void {
   const game=round as HeadbandsRound,ended=game.phase==='ended',paused=game.phase==='paused';
   app.innerHTML=`<section class="game ${ended?'':'active-game'} ${useTilt?'tilt-game':''}"><div class="game-status"><span class="tag">${paused?'Paused':ended?'Round complete':''}</span><span id="remaining">${showCountdown?`${Math.ceil(game.remaining/1000)}s`:''}</span></div><div class="prompt" aria-live="polite">${ended?(game.reason==='complete'?'Deck complete!':game.reason==='time'?'Time’s up!':'Round ended'):paused?'Paused':esc(game.current.text)}</div>${ended?`<p class="result">${game.score} correct · ${game.passed} passed · ${game.results.filter(r=>r.outcome==='Unanswered').length} unanswered</p>${button('new-round','Play Again','primary full')}${button('home','Home','full quiet')}<section class="list-panel results">${game.results.map(r=>`<div class="card-row"><span class="card-text">${esc(r.card.text)}</span><span class="muted">${r.outcome}</span></div>`).join('')}</section>`:paused?`<div class="game-controls actions">${button('resume','Resume','primary')}${button('end-round','End Round')}</div>`:`<div class="game-controls">${useTilt?`<p class="tilt-hint muted" id="tilt-status">${tilt.calibrated?'Return to forehead between tilts':'Hold sideways and steady to enable tilts'}</p>`:''}<div class="answer-bar">${button('pause','Pause','quiet')}${useTilt?`<span class="muted tilt-score">${game.score} correct</span>`:`<div class="answer-buttons">${button('head-correct','Correct','primary')}${button('head-pass','Pass')}</div>`}${button('end-round','End','quiet')}</div></div>`}</section>`;
 }
+function tabooDeck():TabooDeck|undefined{return library.tabooDecks?.find(d=>d.id===tabooSelected);}
+function renderTabooLibrary():void{
+  const decks=library.tabooDecks??[];
+  app.innerHTML=`<div class="toolbar">${button('taboo-menu','‹ Taboo')} ${button('taboo-new','＋ New Taboo Deck','primary')}</div>${entry==='new-deck'?`<form id="taboo-new-form" class="panel"><label for="taboo-name">Taboo deck name</label><input id="taboo-name" name="name" required maxlength="120"><div class="form-actions"><button class="primary">Create Deck</button>${button('cancel-edit','Cancel')}</div></form>`:''}<p class="muted">Only Taboo uses these decks. Regular decks stay in Manage Decks.</p><section class="list-panel">${decks.map(d=>`<button class="menu-row" data-taboo-deck="${esc(d.id)}"><span><strong>${esc(d.name)}</strong><small>${d.cards.length} cards</small></span><span class="arrow">›</span></button>`).join('')||'<p class="empty">Create a Taboo deck to get started.</p>'}</section>`;
+}
+function renderTabooEditor():void{
+  const d=tabooDeck();if(!d){route='taboo-library';render();return;}
+  const c=d.cards.find(c=>c.id===editingCard),pages=Math.max(1,Math.ceil(d.cards.length/50));cardPage=Math.min(cardPage,pages-1);
+  let form='';
+  if(entry==='rename')form=`<form id="taboo-rename-form" class="panel"><label for="taboo-name">Deck name</label><input id="taboo-name" name="name" value="${esc(d.name)}" required maxlength="120"><div class="form-actions"><button class="primary">Save Name</button>${button('cancel-edit','Cancel')}</div></form>`;
+  if(entry==='card')form=`<form id="taboo-card-form" class="panel"><h2>${c?'Edit':'Add'} Taboo Card</h2><label for="taboo-answer">Answer</label><input id="taboo-answer" name="text" value="${esc(c?.text??'')}" required>${Array.from({length:5},(_,i)=>`<label for="forbidden-${i}">Forbidden word ${i+1}</label><input id="forbidden-${i}" name="forbidden-${i}" value="${esc(c?.forbidden[i]??'')}" required>`).join('')}<div class="form-actions"><button class="primary">Save Card</button>${button('cancel-edit','Cancel')}${c?button('taboo-delete-card','Delete','danger'):''}</div></form>`;
+  if(entry==='bulk')form=`<form id="taboo-bulk-form" class="panel"><h2>Paste Taboo Cards</h2><p class="muted">One card per line. Separate the answer and five forbidden words with |.</p><label for="taboo-bulk">Cards</label><textarea id="taboo-bulk" name="text" required placeholder="Astronaut | Space | NASA | Rocket | Moon | Helmet"></textarea><p class="muted">Every line is checked before any cards are saved.</p><div class="form-actions"><button class="primary">Import Cards</button>${button('cancel-edit','Cancel')}</div></form>`;
+  app.innerHTML=`<div class="toolbar">${button('taboo-library','‹ Taboo Decks')}<span class="muted">${d.cards.length} cards</span></div><div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Paste a List')}</div>${form}<section class="list-panel">${d.cards.slice(cardPage*50,cardPage*50+50).map(c=>`<button class="menu-row" data-taboo-edit="${esc(c.id)}"><span><strong>${esc(c.text)}</strong><small>${c.forbidden.map(esc).join(' · ')}</small></span><span class="arrow">›</span></button>`).join('')||'<p class="empty">Add an answer and five forbidden words.</p>'}</section>${pages>1?`<p class="muted">Page ${cardPage+1} of ${pages}</p><div class="actions"><button data-action="page-prev" ${cardPage===0?'disabled':''}>Previous 50</button><button data-action="page-next" ${cardPage===pages-1?'disabled':''}>Next 50</button></div>`:''}<details class="panel"><summary>Deck options</summary><div class="option-list">${button('rename-deck','Rename Deck')}${button('taboo-backup','Back Up This Deck')}${button('taboo-delete','Delete Deck','danger')}</div></details>`;
+}
+function renderTaboo():void{
+  const playable=(library.tabooDecks??[]).filter(d=>d.cards.length);
+  if(!playable.some(d=>d.id===tabooSelected))tabooSelected=playable[0]?.id??'';
+  if(!(round instanceof TabooRound)){
+    app.innerHTML=`<section class="list-panel">${destination('taboo-library','Manage Taboo Decks','Create cards with five forbidden words.','▱')}</section>${playable.length?`<form id="taboo-round-form" class="panel"><label for="taboo-picker">Taboo deck</label><select id="taboo-picker">${playable.map(d=>`<option value="${esc(d.id)}" ${d.id===tabooSelected?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`).join('')}</select><label for="taboo-team-count">Teams</label><select id="taboo-team-count">${Array.from({length:7},(_,i)=>`<option value="${i+2}" ${tabooTeams.length===i+2?'selected':''}>${i+2} teams</option>`).join('')}</select>${tabooTeams.map((name,i)=>`<label for="taboo-team-${i}">Team ${i+1} name</label><input id="taboo-team-${i}" data-taboo-team="${i}" value="${esc(name)}" required maxlength="80">`).join('')}<label for="taboo-duration">Round timer</label><select id="taboo-duration">${durationPicker(tabooDuration)}</select><label class="check"><input id="timer-sound" type="checkbox" ${timerSound?'checked':''}> Timer sound</label><button class="primary full" ${preparing?'disabled':''}>${preparing?'Preparing…':'Start Game'}</button></form>`:'<p class="empty">Create a Taboo deck and add cards to play.</p>'}<details class="panel"><summary>How to play</summary><p>Describe the bold answer without saying it or any of the five forbidden words. A player from another team watches the card and calls violations.</p><p>Correct earns 1 point. Pass earns 0. Taboo subtracts 1. Teams take turns each round. Each card appears once per round; the deck reshuffles next round. The countdown stays hidden.</p></details>`;return;
+  }
+  const g=round,ended=g.phase==='ended',paused=g.phase==='paused';if(ended)tabooMatch?.settle();
+  app.innerHTML=`<section class="game ${ended?'':'active-game'}"><div class="game-status"><span class="tag">${esc(tabooMatch?.teams[tabooMatch.teamIndex]??'')} · Round ${tabooMatch?.number??1}</span><span id="remaining">${showCountdown?`${Math.ceil(g.remaining/1000)}s`:''}</span></div><div class="taboo-prompt"><div class="prompt" aria-live="polite">${ended?(g.reason==='complete'?'Deck complete!':g.reason==='time'?'Time’s up!':'Round ended'):paused?'Paused':esc(g.current.text)}</div>${!ended&&!paused?`<p class="forbidden-label">DON’T SAY</p><ul class="forbidden-words">${g.current.forbidden.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>`:''}</div>${ended?`<p class="result">Round score: ${g.score} · ${g.results.filter(r=>r.outcome==='Correct').length} correct · ${g.results.filter(r=>r.outcome==='Taboo').length} violations</p><section class="list-panel">${tabooMatch?.teams.map((name,i)=>`<div class="card-row"><span class="card-text">${esc(name)}</span><strong>${tabooMatch!.scores[i]}</strong></div>`).join('')}</section>${button('taboo-next-round',`Next: ${esc(tabooMatch?.teams[tabooMatch.number%tabooMatch.teams.length]??'team')}`,'primary full')}${button('finish-game','Finish Game','full quiet')}`:paused?`<div class="game-controls actions">${button('resume','Resume','primary')}${button('end-round','End Round')}</div>`:`<div class="game-controls"><div class="answer-bar taboo-controls">${button('pause','Pause','quiet')}<div class="answer-buttons">${button('taboo-correct','Correct','primary')}${button('taboo-pass','Pass')}${button('taboo-violation','Taboo','danger')}</div>${button('end-round','End','quiet')}</div></div>`}</section>`;
+}
+
+function collectionSummary(value:Library):string{return `${value.decks.length} regular decks · ${value.decks.reduce((n,d)=>n+d.cards.length,0)} cards<br>${value.tabooDecks?.length??0} Taboo decks · ${(value.tabooDecks??[]).reduce((n,d)=>n+d.cards.length,0)} Taboo cards`;}
 function renderBackups(): void {
   const count=library.decks.reduce((n,d)=>n+d.cards.length,0);
   const incoming=pendingBackup?.library;
   app.innerHTML=`<p class="muted">Keep a backup in Files or iCloud Drive. Decks stay on this device; GitHub does not back them up.</p>
-    ${!loadFailure?`<section class="panel"><h2>Save a copy</h2><p>${library.decks.length} decks · ${count} cards</p>${button('backup','Export Backup','primary full')}<details ${showBackupText?'open':''}><summary>Copy backup text instead</summary>${button('backup-text','Show Backup Text')}${showBackupText?`<label for="backup-json">Backup JSON</label><textarea id="backup-json" readonly>${esc(exportBackup(library))}</textarea>${button('copy-backup','Copy Backup Text')}<p class="muted">Save this text in a file ending in .json. The file can be restored below.</p>`:''}</details></section>`:`<p class="error">${esc(loadFailure)}</p>`}
+    ${!loadFailure?`<section class="panel"><h2>Save a copy</h2><p>${collectionSummary(library)}</p>${button('backup','Export Backup','primary full')}<details ${showBackupText?'open':''}><summary>Copy backup text instead</summary>${button('backup-text','Show Backup Text')}${showBackupText?`<label for="backup-json">Backup JSON</label><textarea id="backup-json" readonly>${esc(exportBackup(library))}</textarea>${button('copy-backup','Copy Backup Text')}<p class="muted">Save this text in a file ending in .json. The file can be restored below.</p>`:''}</details></section>`:`<p class="error">${esc(loadFailure)}</p>`}
     <section class="panel"><h2>Restore a backup</h2><p class="muted">Choose a DeckForge JSON backup. You’ll review it before anything changes.</p><label for="backup-file" class="file-label">Choose Backup File</label><input id="backup-file" type="file" accept=".json,application/json" ${futureData?'disabled':''}>
-      ${incoming?`<div class="restore-preview"><h3>Ready to import</h3><p>${esc(backupFilename)}<br>${incoming.decks.length} decks · ${incoming.decks.reduce((n,d)=>n+d.cards.length,0)} cards<br><small>${esc(pendingBackup!.source)}</small></p><details><summary>Preview decks</summary><ul>${incoming.decks.map(d=>`<li>${esc(d.name)} · ${d.cards.length} cards</li>`).join('')}</ul></details><label for="restore-mode">Import as</label><select id="restore-mode"><option value="add" ${restoreMode==='add'?'selected':''}>Add copies — keep existing decks</option><option value="replace" ${restoreMode==='replace'?'selected':''}>Replace library — save a restore point first</option></select><p class="muted">${restoreMode==='add'?'Your existing decks and timer settings stay as they are.':'Your current decks will be replaced. A local restore point lets you undo this; export a file for a separate backup.'}</p><div class="form-actions">${button('restore-backup',restoreMode==='add'?'Add Deck Copies':'Replace Library','primary')}${button('cancel-restore','Cancel')}</div></div>`:''}</section>
-    ${restorePoint && !futureData?`<details class="panel"><summary>Local recovery</summary><p>Recover ${restorePoint.library.decks.length} decks${restorePoint.savedAt?` from ${esc(new Date(restorePoint.savedAt).toLocaleString())}`:' from the previous save'}. A local copy cannot protect against clearing all app data.</p>${button('recover','Review Restore Point')}</details>`:''}`;
+      ${incoming?`<div class="restore-preview"><h3>Ready to import</h3><p>${esc(backupFilename)}<br>${collectionSummary(incoming)}<br><small>${esc(pendingBackup!.source)}</small></p><details><summary>Preview decks</summary><ul>${[...incoming.decks,...(incoming.tabooDecks??[]).map(d=>({...d,name:d.name+' (Taboo)'}))].map(d=>`<li>${esc(d.name)} · ${d.cards.length} cards</li>`).join('')}</ul></details><label for="restore-mode">Import as</label><select id="restore-mode"><option value="add" ${restoreMode==='add'?'selected':''}>Add copies — keep existing decks</option><option value="replace" ${restoreMode==='replace'?'selected':''}>Replace library — save a restore point first</option></select><p class="muted">${restoreMode==='add'?'Your existing decks and timer settings stay as they are.':'Your current decks will be replaced. A local restore point lets you undo this; export a file for a separate backup.'}</p><div class="form-actions">${button('restore-backup',restoreMode==='add'?'Add Deck Copies':'Replace Library','primary')}${button('cancel-restore','Cancel')}</div></div>`:''}</section>
+    ${restorePoint && !futureData?`<details class="panel"><summary>Local recovery</summary><p>Recover ${restorePoint.library.decks.length} regular and ${restorePoint.library.tabooDecks?.length??0} Taboo decks${restorePoint.savedAt?` from ${esc(new Date(restorePoint.savedAt).toLocaleString())}`:' from the previous save'}. A local copy cannot protect against clearing all app data.</p>${button('recover','Review Restore Point')}</details>`:''}`;
 }
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.4.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.5.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <p class="section-label">EXPERIMENT</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section><p class="muted footnote">Separate PWA experiment. Your native DeckForge app is unchanged.</p>`;
 }
 function renderStorageError(): void {
@@ -179,7 +210,7 @@ async function mutate(change: (next: Library)=>void, checkpoint=false): Promise<
 }
 function navigate(target: string): void {
   if((calibrating || (round && round.phase!=='ended')) && !confirm('Leave and end the current round?')) return;
-  gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
+  gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
   promptDraw=undefined;route=target; say(''); render(); window.scrollTo({top:0});
 }
 function openEntry(next: typeof entry): void {
@@ -212,6 +243,14 @@ async function action(name: string): Promise<void> {
   const d=deck();
   if(name.startsWith('award-')){const index=name==='award-none'?null:Number(name.slice(6));if(match?.award(index))render();return;}
   switch(name) {
+    case 'taboo-menu':navigate('taboo');break;
+    case 'taboo-library':navigate('taboo-library');break;
+    case 'taboo-new':openEntry('new-deck');break;
+    case 'taboo-backup':if(tabooDeck())await downloadBackup({...library,decks:[],tabooDecks:[tabooDeck()!]});break;
+    case 'taboo-delete':{const t=tabooDeck();if(t&&confirm(`Delete “${t.name}” and its cards?`)){await mutate(next=>{next.tabooDecks=next.tabooDecks?.filter(d=>d.id!==t.id);},true);entry='';route='taboo-library';render();say('Taboo deck deleted. A local restore point was saved.');}break;}
+    case 'taboo-delete-card':{const t=tabooDeck(),id=editingCard;if(t&&id&&confirm('Delete this Taboo card?')){await mutate(next=>{const d=next.tabooDecks!.find(d=>d.id===t.id)!;d.cards=d.cards.filter(c=>c.id!==id);},true);entry='';editingCard=undefined;render();say('Card deleted. A local restore point was saved.');}break;}
+    case 'taboo-correct':case 'taboo-pass':case 'taboo-violation':checkRound();if(round instanceof TabooRound&&round.answer(name==='taboo-correct'?'Correct':name==='taboo-pass'?'Passed':'Taboo',performance.now())){if(name!=='taboo-pass')gameAudio.feedback(name==='taboo-correct');if(round.phase==='ended'){gameAudio.stopCountdown();releaseWake();tabooMatch?.settle();}render();}break;
+    case 'taboo-next-round':if(tabooMatch&&round?.phase==='ended'&&!preparing){const token=gameGeneration;preparing=true;try{await readyAudio();if(token===gameGeneration&&!document.hidden){round=tabooMatch.start(performance.now());startCues();}}finally{preparing=false;render();}}break;
     case 'home': navigate('home'); break;
     case 'settings': navigate('settings'); break;
     case 'backups': restorePoint=await recovery(); navigate('backups'); break;
@@ -239,7 +278,7 @@ async function action(name: string): Promise<void> {
     case 'resume': if(preparing)break;if(route==='headbands')await prepareHeadbands(true);else if(round?.phase==='paused'){
       const token=gameGeneration;await readyAudio();if(token!==gameGeneration||document.hidden||round?.phase!=='paused')break;round.resume(performance.now());gameAudio.schedule(round.remaining,roundLength,timerSound);if(loopForRound)void audio.startLoop().catch(audioError);void keepAwake();render();
     }break;
-    case 'end-round': pauseGame();if(confirm('End this round?')){if(round instanceof HeadbandsRound)round.end();else if(round)round.phase='ended';gameAudio.stop();audio.stop();render();}break;
+    case 'end-round': pauseGame();if(confirm('End this round?')){if(round instanceof HeadbandsRound||round instanceof TabooRound)round.end();else if(round)round.phase='ended';gameAudio.stop();audio.stop();render();}break;
     case 'new-round': gameGeneration++;round=undefined;gameAudio.stop();audio.stop();sensors.stop();tilt.reset();calibrating=false;render();break;
     case 'next-team-round': if(match?.scored&&!preparing){const token=gameGeneration;preparing=true;try{await readyAudio();if(token===gameGeneration&&!document.hidden&&match?.scored){round=match.start(performance.now());startCues();}}finally{preparing=false;}}break;
     case 'finish-game': navigate('home');break;
@@ -262,12 +301,12 @@ async function action(name: string): Promise<void> {
     case 'backup': await downloadBackup(library); break;
     case 'backup-text': showBackupText=true;render();break;
     case 'copy-backup': await navigator.clipboard.writeText(document.querySelector<HTMLTextAreaElement>('#backup-json')!.value);say('Backup text copied. Save it as a .json file.');break;
-    case 'backup-deck': if(d) await downloadBackup({...library,decks:[d]}); break;
+    case 'backup-deck': if(d) await downloadBackup({...library,decks:[d],tabooDecks:[]}); break;
     case 'cancel-restore': pendingBackup=undefined;backupFilename='';render();break;
     case 'restore-backup': if(pendingBackup) {
       const restored=restoreBackup(library,pendingBackup.library,restoreMode);
-      await mutate(next=>{Object.assign(next,restored);},restoreMode==='replace');
-      draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;loadFailure='';restorePoint=await recovery();pendingBackup=undefined;entry='';selected='';lookupIndex=null;route='library';render();say('Backup restored and saved.');
+      await mutate(next=>{for(const key of Object.keys(next))delete (next as unknown as Record<string,unknown>)[key];Object.assign(next,restored);},restoreMode==='replace');
+      tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;loadFailure='';restorePoint=await recovery();pendingBackup=undefined;entry='';selected='';lookupIndex=null;route='library';render();say('Backup restored and saved.');
     } break;
     case 'recover': if(restorePoint) { pendingBackup={library:restorePoint.library,source:'DeckForge PWA'};backupFilename='Local restore point';restoreMode='replace';render();say('Review this recovery copy before replacing the library.'); } break;
     case 'sensors': await sensors.start(); updateLab(); break;
@@ -282,6 +321,12 @@ function audioError(error: unknown): void { audio.log(`Playback failed: ${String
 async function submit(form: HTMLFormElement): Promise<void> {
   const data=new FormData(form),text=String(data.get('text') ?? '').trim(),name=String(data.get('name') ?? '').trim(),d=deck();
   switch(form.id) {
+    case 'taboo-new-form':if(!name)throw new Error('Enter a deck name.');{const id=uid();await mutate(next=>{(next.tabooDecks??=[]).push({id,name,cards:[]});});tabooSelected=id;route='taboo-editor';entry='';cardPage=0;render();say('Taboo deck saved.');break;}
+    case 'taboo-rename-form':if(!name)throw new Error('Enter a deck name.');await mutate(next=>{next.tabooDecks!.find(d=>d.id===tabooSelected)!.name=name;});entry='';render();break;
+    case 'taboo-card-form':{const value=validateTabooCard(text,Array.from({length:5},(_,i)=>String(data.get('forbidden-'+i)??'').trim()));await mutate(next=>{const d=next.tabooDecks!.find(d=>d.id===tabooSelected)!;if(editingCard)Object.assign(d.cards.find(c=>c.id===editingCard)!,value);else d.cards.push({id:uid(),...value});});entry='';editingCard=undefined;render();say('Taboo card saved.');break;}
+    case 'taboo-bulk-form':{const cards=importTaboo(String(data.get('text')??''));await mutate(next=>{const target=next.tabooDecks!.find(d=>d.id===tabooSelected)!;for(const card of cards)target.cards.push({id:uid(),...card});});entry='';render();say(`${cards.length} Taboo cards saved.`);break;}
+    case 'taboo-round-form':{const d=tabooDeck();if(!d||preparing)break;const names=teamNames(tabooTeams),duration=tabooDuration;roundSeconds(duration);const token=++gameGeneration;preparing=true;const sound=readyAudio();render();try{await Promise.all([sound,mutate(next=>{next.tabooTeams=names;next.tabooDuration=duration;})]);if(token!==gameGeneration||document.hidden)return;tabooMatch=new TabooGame(d.cards,names,duration);round=tabooMatch.start(performance.now());startCues();}finally{preparing=false;render();}break;}
+
     case 'new-deck': if(!name) throw new Error('Enter a deck name.'); {
       const id=uid();await mutate(next=>next.decks.push({id,name,cards:[]}));selected=id;route='editor';cardPage=0;entry='';render();say('Deck saved.');break;
     }
@@ -309,9 +354,12 @@ async function submit(form: HTMLFormElement): Promise<void> {
   }
 }
 app.addEventListener('submit',event=>{event.preventDefault();if(event.target instanceof HTMLFormElement) void submit(event.target).catch(error=>say(`Could not save: ${String(error)}`));});
-app.addEventListener('input',event=>{if(event.target instanceof HTMLInputElement && event.target.dataset.team!==undefined)draftTeams[Number(event.target.dataset.team)]=event.target.value;if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent=`${importLines(event.target.value).length} cards ready`;});
+app.addEventListener('input',event=>{if(event.target instanceof HTMLInputElement&&event.target.dataset.tabooTeam!==undefined)tabooTeams[Number(event.target.dataset.tabooTeam)]=event.target.value;if(event.target instanceof HTMLInputElement && event.target.dataset.team!==undefined)draftTeams[Number(event.target.dataset.team)]=event.target.value;if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent=`${importLines(event.target.value).length} cards ready`;});
 app.addEventListener('change',event=>{
   const el=event.target;
+  if(el instanceof HTMLSelectElement&&el.id==='taboo-picker'){tabooSelected=el.value;render();}
+  if(el instanceof HTMLSelectElement&&el.id==='taboo-duration')tabooDuration=Number(el.value);
+  if(el instanceof HTMLSelectElement&&el.id==='taboo-team-count'){const count=Number(el.value);while(tabooTeams.length<count)tabooTeams.push('Team '+(tabooTeams.length+1));tabooTeams=tabooTeams.slice(0,count);render();}
   if(el instanceof HTMLSelectElement && el.id==='team-count'){const count=Number(el.value);while(draftTeams.length<count)draftTeams.push('Team '+(draftTeams.length+1));draftTeams=draftTeams.slice(0,count);render();}
   if(el instanceof HTMLSelectElement && el.id==='duration')draftDuration=Number(el.value);
   if(el instanceof HTMLSelectElement && el.id==='head-duration')headDuration=Number(el.value);
@@ -334,6 +382,8 @@ app.addEventListener('change',event=>{
 document.addEventListener('click',event=>{
   const el=(event.target as HTMLElement).closest<HTMLButtonElement>('button');if(!el)return;
   if(el.dataset.route) { if(el.dataset.route==='backups') void action('backups').catch(error=>say(String(error)));else navigate(el.dataset.route); }
+  else if(el.dataset.tabooDeck){tabooSelected=el.dataset.tabooDeck;cardPage=0;entry='';editingCard=undefined;route='taboo-editor';render();}
+  else if(el.dataset.tabooEdit){editingCard=el.dataset.tabooEdit;openEntry('card');document.querySelector('#taboo-card-form')?.scrollIntoView({block:'start',behavior:'smooth'});}
   else if(el.dataset.deck) {selected=el.dataset.deck;cardPage=0;entry='';editingCard=undefined;route='editor';say('');render();}
   else if(el.dataset.edit) {editingCard=el.dataset.edit;openEntry('card');document.querySelector('#card-form')?.scrollIntoView({block:'start',behavior:'smooth'});}
   else if(el.dataset.action) void action(el.dataset.action).catch(error=>say(`Could not complete action: ${String(error)}`));
@@ -418,5 +468,5 @@ async function setupOffline(): Promise<void> {
     registration.addEventListener('updatefound',()=>{const installing=registration.installing;installing?.addEventListener('statechange',ready);});
   } catch(error) {offline='Offline setup failed · reopen online';mark();say(`Offline setup: ${String(error)}`);}
 }
-try {library=await load();draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;restorePoint=await recovery();render();void storageProtection(true);void setupOffline();}
+try {library=await load();tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;restorePoint=await recovery();render();void storageProtection(true);void setupOffline();}
 catch(error) {library=emptyLibrary();loadFailure=String(error);futureData=error instanceof NewerFormatError;try{restorePoint=await recovery();}catch{}render();void setupOffline();}

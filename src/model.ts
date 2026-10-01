@@ -1,6 +1,8 @@
 export interface Card { id: string; text: string }
 export interface Deck { id: string; name: string; cards: Card[] }
-export interface Library { decks: Deck[]; duration: number; probe: string | null; teams?: string[]; headbandsDuration?: number }
+export interface TabooCard extends Card { forbidden: string[] }
+export interface TabooDeck { id: string; name: string; cards: TabooCard[] }
+export interface Library { tabooDecks?: TabooDeck[]; tabooDuration?: number; tabooTeams?: string[]; decks: Deck[]; duration: number; probe: string | null; teams?: string[]; headbandsDuration?: number }
 export const emptyLibrary = (): Library => ({decks: [], duration: 0, probe: null});
 export function importLines(input: string): string[] {
   return input.split(/\r\n|\n|\r/).map(line => line.trim()
