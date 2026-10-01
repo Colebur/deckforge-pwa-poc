@@ -1,10 +1,11 @@
+import {filterLibrary,defaultPreferences,backupDue,backupOverlap,gameShortcut,type LibraryFilter,type Preferences} from './refinements.js';
 import {PromptSession} from './prompt-session.js';
 import {MODES,metadata,modeDecks,sectionRoot,type ModeId,type LaunchContext,type DeckMetadata} from './modes.js';
 import {HeadbandsSetup} from './headbands-setup.js';
 import {ActivitySession,activityParts,moveItem,type ActivityMode} from './activities.js';
 import {importTaboo,validateTabooCard,TabooRound,TabooGame} from './taboo.js';
 import { alphabeticalDecks, importLines, type PromptDraw, lookup, Round, emptyLibrary, type Deck, type TabooDeck, type Library } from './model.js';
-import { load, save, recovery, type Recovery } from './storage.js';
+import { load, save, recovery, loadPreferences, savePreferences, type Recovery } from './storage.js';
 import { exportBackup, parseBackup, restoreBackup, MAX_BACKUP_BYTES, NewerFormatError, type BackupPreview } from './backup.js';
 import {TeamGame, HeadbandsRound, TIMER_CHOICES, defaultTeams, teamNames, roundSeconds} from './games.js';
 import {TiltDetector} from './tilt.js';
@@ -21,6 +22,12 @@ const placement=new HeadbandsSetup();
 let placementLabel='';
 const sideways=():boolean=>matchMedia('(orientation: landscape)').matches;
 let library: Library;
+let preferences=defaultPreferences();
+const libraryFilters:Record<'regular'|'taboo',LibraryFilter>={regular:{search:'',context:'all',mode:'all'},taboo:{search:'',context:'all',mode:'all'}};
+let replaceAcknowledged=false;
+async function setPreferences(change:(next:Preferences)=>void):Promise<void>{
+  const next={...preferences};change(next);await savePreferences(next);preferences=next;render();
+}
 let revealedDeck="";
 let suppressDeckClickUntil=0;
 let route = 'home';
@@ -98,6 +105,10 @@ function organization(d:Deck|TabooDeck,format:'regular'|'taboo'):string {
   return `<details class="panel deck-organization"><summary>Deck organization · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</summary><form id="organization-form" data-format="${format}"><fieldset><legend>Best suited for</legend><div class="context-options">${['play','work','both'].map(c=>`<label><input type="radio" name="deckContext" value="${c}" ${d.deckContext===c?'checked':''}> ${c==='both'?'Both':c==='play'?'Play':'Work'}</label>`).join('')}</div></fieldset><fieldset><legend>Available in</legend>${MODES.filter(m=>m.format===format).map(m=>`<label class="check"><input type="checkbox" name="compatibleModes" value="${m.id}" ${d.compatibleModes.includes(m.id)?'checked':''} ${m.id==='lookup'&&d.cards.length!==54?'disabled':''}> ${m.title}${m.id==='lookup'&&d.cards.length!==54?' — requires exactly 54 cards':''}</label>`).join('')}</fieldset><p class="muted">Context recommends decks; it never restricts access. Unchecked modes can still find this deck with Show All Decks when its card format and size are valid. Jenga requires 54 cards; an existing assignment stays saved but is unavailable at other sizes.${format==='taboo'?' Taboo cards require five forbidden words and use their separate editor.':''}</p><button class="primary full">Save Organization</button></form></details>`;
 }
 function render(): void {
+  const active=document.activeElement instanceof HTMLElement && app.contains(document.activeElement)?document.activeElement:undefined;
+  const focusId=active?.id;
+  const focusAction=active?.dataset.action;
+  document.body.classList.toggle('large-text',preferences.largeText);
   const playing=(['catchphrase','headbands','taboo'].includes(route) && (calibrating || (!!round && round.phase!=='ended'))) || (route==='prompts' && !!promptDraw); 
   document.body.dataset.context=section;
   document.body.classList.toggle('playing',playing);
@@ -128,6 +139,10 @@ function render(): void {
   else if(route==='backups') renderBackups();
   else if(route==='settings') renderSettings();
   else renderLab();
+  if(active){
+    const replacement=focusId?document.getElementById(focusId):focusAction?Array.from(app.querySelectorAll<HTMLElement>('[data-action]')).find(el=>el.dataset.action===focusAction):undefined;
+    (replacement && !replacement.hidden && !(replacement instanceof HTMLButtonElement && replacement.disabled)?replacement:app).focus({preventScroll:true});
+  }
 }
 function renderHome(): void {
   const modes=section==='work'?MODES:MODES.filter(m=>m.play);
@@ -135,20 +150,36 @@ function renderHome(): void {
 }
 function libraryRow(d:Deck|TabooDeck,kind:'regular'|'taboo'):string {
   const key=kind+':'+d.id,open=revealedDeck===key;
-  return `<div class="swipe-deck ${open?'revealed':''}" data-swipe-key="${esc(key)}"><button class="swipe-delete" data-swipe-delete="${esc(d.id)}" data-kind="${kind}" aria-label="Delete ${esc(d.name)}" ${open?'':'hidden'}>Delete</button><button class="menu-row swipe-front" data-${kind==='regular'?'deck':'taboo-deck'}="${esc(d.id)}"><span><strong>${esc(d.name)}</strong><small>${d.cards.length} cards${kind==='regular'?` · ${(d as Deck).activities.length} activities`:''} · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</small></span><span class="arrow" aria-hidden="true">›</span></button></div>`;
+  return `<div class="swipe-deck ${open?'revealed':''}" data-swipe-key="${esc(key)}"><button class="swipe-delete" data-swipe-delete="${esc(d.id)}" data-kind="${kind}" aria-label="Delete ${esc(d.name)}" ${open?'':'hidden'}>Delete</button><button type="button" class="deck-reveal quiet" data-reveal-key="${esc(key)}" aria-label="Show delete for ${esc(d.name)}" aria-expanded="${open}" ${open?'hidden':''}>···</button><button class="menu-row swipe-front" data-${kind==='regular'?'deck':'taboo-deck'}="${esc(d.id)}"><span><strong>${esc(d.name)}</strong><small>${d.cards.length} cards${kind==='regular'?` · ${(d as Deck).activities.length} activities`:''} · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</small></span><span class="arrow" aria-hidden="true">›</span></button></div>`;
 }
 function revealDeck(key:string):void {
   revealedDeck=key;
-  app.querySelectorAll<HTMLElement>('.swipe-deck').forEach(row=>{const open=row.dataset.swipeKey===key;row.classList.toggle('revealed',open);row.querySelector<HTMLButtonElement>('.swipe-delete')!.hidden=!open;});
+  app.querySelectorAll<HTMLElement>('.swipe-deck').forEach(row=>{const open=row.dataset.swipeKey===key;row.classList.toggle('revealed',open);row.querySelector<HTMLButtonElement>('.swipe-delete')!.hidden=!open;const toggle=row.querySelector<HTMLButtonElement>('.deck-reveal')!;toggle.hidden=open;toggle.setAttribute('aria-expanded',String(open));});
 }
 async function deleteLibraryDeck(id:string,kind:string):Promise<void>{
   await mutate(next=>{if(kind==='taboo')next.tabooDecks=next.tabooDecks?.filter(d=>d.id!==id);else next.decks=next.decks.filter(d=>d.id!==id);},true);
   revealedDeck='';restorePoint=await recovery();render();say('Deck deleted. You can recover it from Backups → Local recovery.');
 }
+function backupReminder():string {
+  return backupDue(preferences,Date.now())?`<aside class="panel backup-reminder" aria-label="Backup reminder"><p>${preferences.lastConfirmedBackup?'It’s been a month since your last confirmed backup.':'It’s been a month since you enabled backup reminders.'} Keep a copy of your library somewhere safe.</p><div class="form-actions">${button('backups','Back Up Library','primary')}${button('snooze-backup','Remind Me in a Week','quiet')}</div></aside>`:'';
+}
+function libraryTools(kind:'regular'|'taboo'):string {
+  const filter=libraryFilters[kind];
+  return `<section class="library-tools" aria-label="Find decks"><label for="library-search">Search deck names</label><input id="library-search" type="search" value="${esc(filter.search)}" placeholder="Find a deck" autocomplete="off"><div class="filter-controls"><div><label for="library-context">Context</label><select id="library-context">${[['all','All contexts'],['play','Play'],['work','Work'],['both','Both']].map(([id,title])=>`<option value="${id}" ${filter.context===id?'selected':''}>${title}</option>`).join('')}</select></div><div><label for="library-mode">Available in</label><select id="library-mode">${[['all','All modes'],...MODES.filter(m=>m.format===kind).map(m=>[m.id,m.title]),['unassigned','Unassigned']].map(([id,title])=>`<option value="${id}" ${filter.mode===id?'selected':''}>${title}</option>`).join('')}</select></div></div>${button('clear-library-filters','Clear Search & Filters','quiet')}<p id="library-count" class="muted" role="status" aria-live="polite"></p></section>`;
+}
+function updateLibraryResults():void {
+  const kind=route==='taboo-library'?'taboo':'regular';
+  const decks=kind==='taboo'?library.tabooDecks??[]:library.decks;
+  const filtered=filterLibrary<Deck|TabooDeck>(decks,libraryFilters[kind]);
+  const results=document.querySelector('#library-results');if(!results)return;
+  results.innerHTML=filtered.map(d=>libraryRow(d,kind)).join('')||`<p class="empty">${decks.length?'No decks match. Clear the search and filters to see every deck.':'Create a deck, then add cards or paste a list.'}</p>`;
+  document.querySelector('#library-count')!.textContent=`${filtered.length} of ${decks.length} decks · alphabetical`;
+}
 function renderLibrary(): void {
-  app.innerHTML=`<div class="toolbar"><span class="muted">${library.decks.length} decks</span>${button('new-deck','＋ New Deck','primary')}</div>
+  app.innerHTML=`${backupReminder()}<div class="toolbar"><span class="muted">${library.decks.length} decks</span>${button('new-deck','＋ New Deck','primary')}</div>
     ${entry==='new-deck'?`<form id="new-deck" class="panel"><h2>New Deck</h2><label for="deck-name">Deck name</label><input id="deck-name" name="name" required maxlength="120" placeholder="Celebrities"><div class="form-actions"><button class="primary">Create Deck</button>${button('cancel-edit','Cancel')}</div></form>`:''}
-    <section class="list-panel">${library.decks.length ? alphabeticalDecks(library.decks).map(d=>libraryRow(d,'regular')).join('') :  '<p class="empty">Create a deck, then add cards or paste a list.</p>'}</section><p class="section-label">MORE DECK TOOLS</p><section class="list-panel">${destination('taboo-library','Taboo Decks','Cards with five forbidden words.','◇')}${destination('backups','Backups','Export or restore your local library.','↥')}</section>`;
+    ${libraryTools('regular')}<section id="library-results" class="list-panel" aria-label="Regular decks"></section><p class="section-label">MORE DECK TOOLS</p><section class="list-panel">${destination('taboo-library','Taboo Decks','Cards with five forbidden words.','◇')}${destination('backups','Backups','Export or restore your local library.','↥')}</section>`;
+  updateLibraryResults();
 }
 function editorTabs():string {
   return `<div class="segmented" role="group" aria-label="Deck content"><button data-action="editor-cards" aria-pressed="${editorSection==='cards'}">Cards</button><button data-action="editor-activities" aria-pressed="${editorSection==='activities'}">Activities</button></div>`;
@@ -248,7 +279,7 @@ function renderHeadbands():void {
 function tabooDeck():TabooDeck|undefined{return library.tabooDecks?.find(d=>d.id===tabooSelected);}
 function renderTabooLibrary():void{
   const decks=alphabeticalDecks(library.tabooDecks??[]);
-  app.innerHTML=`<div class="toolbar">${button('decks-tab','‹ All Decks')} ${button('taboo-new','＋ New Taboo Deck','primary')}</div>${entry==='new-deck'?`<form id="taboo-new-form" class="panel"><label for="taboo-name">Taboo deck name</label><input id="taboo-name" name="name" required maxlength="120"><div class="form-actions"><button class="primary">Create Deck</button>${button('cancel-edit','Cancel')}</div></form>`:''}<p class="muted">Only Taboo uses these decks. Regular decks stay front-and-center in Decks.</p><section class="list-panel">${decks.map(d=>libraryRow(d,'taboo')).join('')||'<p class="empty">Create a Taboo deck to get started.</p>'}</section>`;
+  app.innerHTML=`<div class="toolbar">${button('decks-tab','‹ All Decks')} ${button('taboo-new','＋ New Taboo Deck','primary')}</div>${entry==='new-deck'?`<form id="taboo-new-form" class="panel"><label for="taboo-name">Taboo deck name</label><input id="taboo-name" name="name" required maxlength="120"><div class="form-actions"><button class="primary">Create Deck</button>${button('cancel-edit','Cancel')}</div></form>`:''}<p class="muted">Only Taboo uses these decks. Regular decks stay front-and-center in Decks.</p>${libraryTools('taboo')}<section id="library-results" class="list-panel" aria-label="Taboo decks"></section>`;updateLibraryResults();
 }
 function renderTabooEditor():void{
   const d=tabooDeck();if(!d){route='taboo-library';render();return;}
@@ -270,19 +301,23 @@ function renderTaboo():void{
 }
 
 function collectionSummary(value:Library):string{return `${value.decks.length} regular decks · ${value.decks.reduce((n,d)=>n+d.cards.length,0)} cards · ${value.decks.reduce((n,d)=>n+d.activities.length,0)} activities<br>${value.tabooDecks?.length??0} Taboo decks · ${(value.tabooDecks??[]).reduce((n,d)=>n+d.cards.length,0)} Taboo cards`;}
+function backupStatus():string {
+  const date=(value:string|null)=>value?esc(new Date(value).toLocaleString()):'Not yet';
+  return `${metric('Last full-library export requested',date(preferences.lastExport))}${metric('Last backup you confirmed saving',date(preferences.lastConfirmedBackup))}<p class="muted">An export request doesn’t prove the file was saved. After saving the full library to Files or another safe location, confirm it here.</p>${button('confirm-backup','I Saved a Full-Library Backup')}<label class="check"><input id="backup-reminders" type="checkbox" ${preferences.backupReminders?'checked':''}> Remind me monthly in Decks</label><p class="muted">Local reminders only, shown while using the app. No notifications or uploads. Individual-deck exports do not reset this reminder.</p>`;
+}
 function renderBackups(): void {
-  const count=library.decks.reduce((n,d)=>n+d.cards.length,0);
+  const overlap=pendingBackup?backupOverlap(library,pendingBackup.library):0;
   const incoming=pendingBackup?.library;
   app.innerHTML=`<p class="muted">Keep a backup in Files or iCloud Drive. Decks stay on this device; GitHub does not back them up.</p>
-    ${!loadFailure?`<section class="panel"><h2>Save a copy</h2><p>${collectionSummary(library)}</p>${button('backup','Export Backup','primary full')}<details ${showBackupText?'open':''}><summary>Copy backup text instead</summary>${button('backup-text','Show Backup Text')}${showBackupText?`<label for="backup-json">Backup JSON</label><textarea id="backup-json" readonly>${esc(exportBackup(library))}</textarea>${button('copy-backup','Copy Backup Text')}<p class="muted">Save this text in a file ending in .json. The file can be restored below.</p>`:''}</details></section>`:`<p class="error">${esc(loadFailure)}</p>`}
+    ${!loadFailure?`<section class="panel"><h2>Save a copy</h2><p>${collectionSummary(library)}</p>${button('backup','Export Backup','primary full')}${backupStatus()}<details ${showBackupText?'open':''}><summary>Copy backup text instead</summary>${button('backup-text','Show Backup Text')}${showBackupText?`<label for="backup-json">Backup JSON</label><textarea id="backup-json" readonly>${esc(exportBackup(library))}</textarea>${button('copy-backup','Copy Backup Text')}<p class="muted">Save this text in a file ending in .json. The file can be restored below.</p>`:''}</details></section>`:`<p class="error">${esc(loadFailure)}</p>`}
     <section class="panel"><h2>Restore a backup</h2><p class="muted">Choose a DeckForge JSON backup. You’ll review it before anything changes.</p><label for="backup-file" class="file-label">Choose Backup File</label><input id="backup-file" type="file" accept=".json,application/json" ${futureData?'disabled':''}>
-      ${incoming?`<div class="restore-preview"><h3>Ready to import</h3><p>${esc(backupFilename)}<br>${collectionSummary(incoming)}<br><small>${esc(pendingBackup!.source)}</small></p><details><summary>Preview decks</summary><ul>${[...incoming.decks,...(incoming.tabooDecks??[]).map(d=>({...d,name:d.name+' (Taboo)'}))].map(d=>`<li>${esc(d.name)} · ${d.cards.length} cards</li>`).join('')}</ul></details><label for="restore-mode">Import as</label><select id="restore-mode"><option value="add" ${restoreMode==='add'?'selected':''}>Add copies — keep existing decks</option><option value="replace" ${restoreMode==='replace'?'selected':''}>Replace library — save a restore point first</option></select><p class="muted">${restoreMode==='add'?'Your existing decks and timer settings stay as they are.':'Your current decks will be replaced. A local restore point lets you undo this; export a file for a separate backup.'}</p><div class="form-actions">${button('restore-backup',restoreMode==='add'?'Add Deck Copies':'Replace Library','primary')}${button('cancel-restore','Cancel')}</div></div>`:''}</section>
+      ${incoming?`<div class="restore-preview"><h3>Ready to import</h3><p>${esc(backupFilename)}<br>${collectionSummary(incoming)}<br><small>${esc(pendingBackup!.source)}</small></p><details><summary>Preview decks</summary><ul>${[...incoming.decks,...(incoming.tabooDecks??[]).map(d=>({...d,name:d.name+' (Taboo)'}))].map(d=>`<li>${esc(d.name)} · ${d.cards.length} cards · ${'activities' in d?d.activities.length+' activities · ':''}${esc(d.deckContext)} · ${esc(d.compatibleModes.map(id=>MODES.find(m=>m.id===id)?.title??id).join(', ')||'No assigned modes')}</li>`).join('')}</ul></details>${overlap?`<p class="muted">${overlap} incoming deck names already exist. Add copies keeps both; names are never used to overwrite decks.</p>`:''}<label for="restore-mode">Import as</label><select id="restore-mode"><option value="add" ${restoreMode==='add'?'selected':''}>Add copies — keep existing decks</option><option value="replace" ${restoreMode==='replace'?'selected':''}>Replace library — save a restore point first</option></select><p class="muted">${restoreMode==='add'?'Your existing decks and timer settings stay as they are.':'Your current decks will be replaced. A local restore point lets you undo this; export a file for a separate backup.'}</p>${restoreMode==='replace'?`<p>Current library: ${collectionSummary(library)}</p><label class="check"><input id="acknowledge-replace" type="checkbox" ${replaceAcknowledged?'checked':''}> I understand this replaces my current library and saved game settings.</label>`:''}<div class="form-actions"><button type="button" data-action="restore-backup" class="primary" ${restoreMode==='replace'&&!replaceAcknowledged?'disabled':''}>${restoreMode==='add'?'Add Deck Copies':'Replace Library'}</button>${button('cancel-restore','Cancel')}</div></div>`:''}</section>
     ${restorePoint && !futureData?`<details class="panel"><summary>Local recovery</summary><p>Recover ${restorePoint.library.decks.length} regular and ${restorePoint.library.tabooDecks?.length??0} Taboo decks${restorePoint.savedAt?` from ${esc(new Date(restorePoint.savedAt).toLocaleString())}`:' from the previous save'}. A local copy cannot protect against clearing all app data.</p>${button('recover','Review Restore Point')}</details>`:''}`;
 }
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
-    <section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.9.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.10.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <p class="section-label">EXPERIMENT</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section><p class="muted footnote">Separate PWA experiment. Your native DeckForge app is unchanged.</p>`;
 }
 function renderStorageError(): void {
@@ -313,22 +348,23 @@ function navigate(target: string,nextSection?:typeof section): void {
   if(['library','editor','taboo-library','taboo-editor'].includes(target))section='decks';
   if(MODES.some(m=>m.id===target)){launchContext=(target==='lookup'||target==='prompts'||section==='work')?'work':'play';section=launchContext;showAllDecks=false;selected='';tabooSelected='';promptIds=undefined;promptSearch='';promptActivityMode='none';promptFixed={};promptSession=undefined;}
   gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
-  revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); window.scrollTo({top:0});
+  revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); app.focus({preventScroll:true});window.scrollTo({top:0});
 }
 function openEntry(next: typeof entry): void {
   confirmActivityDelete=false;entry=next; render(); app.querySelector<HTMLElement>('form:not(#organization-form) input,form:not(#organization-form) textarea')?.focus();
 }
-async function downloadBackup(value: Library): Promise<void> {
+async function downloadBackup(value: Library,fullLibrary=false): Promise<void> {
+  const record=async()=>{if(fullLibrary)await setPreferences(next=>{next.lastExport=new Date().toISOString();});};
   const name=`DeckForge-backup-${new Date().toISOString().slice(0,10)}.json`;
   const contents=exportBackup(value);
   const file=new File([contents],name,{type:'application/json'});
   if(navigator.canShare?.({files:[file]}) && navigator.share) {
-    try { await navigator.share({files:[file],title:'DeckForge Backup'}); say('Backup shared. Keep a copy in Files or iCloud Drive.'); return; }
+    try { await navigator.share({files:[file],title:'DeckForge Backup'}); await record();say('Backup shared. Keep a copy in Files or iCloud Drive, then confirm saving it.'); return; }
     catch(error) { if(error instanceof DOMException && error.name==='AbortError') return; }
     // Some embedded browsers advertise sharing but reject it. Still offer a file.
   }
   const url=URL.createObjectURL(file), a=document.createElement('a'); a.href=url; a.download=name; document.body.append(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),60000); say('Backup download requested. Keep the file somewhere safe.');
+  setTimeout(()=>URL.revokeObjectURL(url),60000); await record();say('Backup download requested. Keep the file somewhere safe.');
 }
 async function storageProtection(request: boolean): Promise<void> {
   try {
@@ -417,17 +453,21 @@ async function action(name: string): Promise<void> {
     }
     case 'save-probe': await mutate(next=>{next.probe=`Saved ${new Date().toLocaleString()} · ${uid().slice(0,8)}`;}); say('Marker saved. Close and reopen to check it.'); break;
     case 'storage': await storageProtection(true); break;
-    case 'backup': await downloadBackup(library); break;
+    case 'backup': await downloadBackup(library,true); break;
+    case 'confirm-backup':await setPreferences(next=>{next.lastConfirmedBackup=new Date().toISOString();next.snoozedUntil=null;});say('Backup confirmation saved on this device.');break;
+    case 'snooze-backup':await setPreferences(next=>{next.snoozedUntil=new Date(Date.now()+7*24*60*60*1000).toISOString();});break;
+    case 'clear-library-filters':{const kind=route==='taboo-library'?'taboo':'regular';libraryFilters[kind]={search:'',context:'all',mode:'all'};revealedDeck='';render();break;}
     case 'backup-text': showBackupText=true;render();break;
     case 'copy-backup': await navigator.clipboard.writeText(document.querySelector<HTMLTextAreaElement>('#backup-json')!.value);say('Backup text copied. Save it as a .json file.');break;
     case 'backup-deck': if(d) await downloadBackup({...library,decks:[d],tabooDecks:[]}); break;
     case 'cancel-restore': pendingBackup=undefined;backupFilename='';render();break;
     case 'restore-backup': if(pendingBackup) {
+      if(restoreMode==='replace'&&!replaceAcknowledged)throw new Error('Acknowledge replacement before continuing.');
       const restored=restoreBackup(library,pendingBackup.library,restoreMode);
       await mutate(next=>{for(const key of Object.keys(next))delete (next as unknown as Record<string,unknown>)[key];Object.assign(next,restored);},restoreMode==='replace');
       tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;loadFailure='';restorePoint=await recovery();pendingBackup=undefined;entry='';selected='';lookupIndex=null;route='library';render();say('Backup restored and saved.');
     } break;
-    case 'recover': if(restorePoint) { pendingBackup={library:restorePoint.library,source:'DeckForge PWA'};backupFilename='Local restore point';restoreMode='replace';render();say('Review this recovery copy before replacing the library.'); } break;
+    case 'recover': if(restorePoint) { pendingBackup={library:restorePoint.library,source:'DeckForge PWA'};backupFilename='Local restore point';restoreMode='replace';replaceAcknowledged=false;render();say('Review this recovery copy before replacing the library.'); } break;
     case 'sensors': await sensors.start(); updateLab(); break;
     case 'stop-sensors': sensors.stop(); updateLab(); break;
     case 'tone': await audio.playTone(); updateLab(); say('Tone playback requested. Confirm you hear it.'); break;
@@ -482,9 +522,12 @@ async function submit(form: HTMLFormElement): Promise<void> {
   }
 }
 app.addEventListener('submit',event=>{event.preventDefault();if(event.target instanceof HTMLFormElement) void submit(event.target).catch(error=>say(`Could not save: ${String(error)}`));});
-app.addEventListener('input',event=>{if(event.target instanceof HTMLInputElement&&event.target.id==='prompt-search'){promptSearch=event.target.value;const term=promptSearch.toLocaleLowerCase();app.querySelectorAll<HTMLElement>('[data-prompt-name]').forEach(el=>{el.hidden=!el.dataset.promptName!.includes(term);});}if(event.target instanceof HTMLInputElement&&event.target.dataset.tabooTeam!==undefined)tabooTeams[Number(event.target.dataset.tabooTeam)]=event.target.value;if(event.target instanceof HTMLInputElement && event.target.dataset.team!==undefined)draftTeams[Number(event.target.dataset.team)]=event.target.value;if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent=`${importLines(event.target.value).length} cards ready`;});
+app.addEventListener('input',event=>{if(event.target instanceof HTMLInputElement&&event.target.id==='library-search'){libraryFilters[route==='taboo-library'?'taboo':'regular'].search=event.target.value;revealedDeck='';updateLibraryResults();}if(event.target instanceof HTMLInputElement&&event.target.id==='prompt-search'){promptSearch=event.target.value;const term=promptSearch.toLocaleLowerCase();app.querySelectorAll<HTMLElement>('[data-prompt-name]').forEach(el=>{el.hidden=!el.dataset.promptName!.includes(term);});}if(event.target instanceof HTMLInputElement&&event.target.dataset.tabooTeam!==undefined)tabooTeams[Number(event.target.dataset.tabooTeam)]=event.target.value;if(event.target instanceof HTMLInputElement && event.target.dataset.team!==undefined)draftTeams[Number(event.target.dataset.team)]=event.target.value;if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent=`${importLines(event.target.value).length} cards ready`;});
 app.addEventListener('change',event=>{
   const el=event.target;
+  if(el instanceof HTMLSelectElement&&['library-context','library-mode'].includes(el.id)){const filter=libraryFilters[route==='taboo-library'?'taboo':'regular'];if(el.id==='library-context')filter.context=el.value;else filter.mode=el.value;revealedDeck='';updateLibraryResults();}
+  if(el instanceof HTMLInputElement&&el.id==='acknowledge-replace'){replaceAcknowledged=el.checked;const button=app.querySelector<HTMLButtonElement>('[data-action="restore-backup"]');if(button)button.disabled=!replaceAcknowledged;}
+  if(el instanceof HTMLInputElement&&['large-text','backup-reminders'].includes(el.id))void setPreferences(next=>{if(el.id==='large-text')next.largeText=el.checked;else{next.backupReminders=el.checked;if(el.checked&&!next.reminderSince)next.reminderSince=new Date().toISOString();}}).catch(error=>say(`Could not save preference: ${String(error)}`));
   if(el instanceof HTMLSelectElement&&el.id==='activity-mode'){activityMode=el.value as ActivityMode;configureLookup();render();}
   if(el instanceof HTMLSelectElement&&el.id==='fixed-activity'){fixedActivityId=el.value;configureLookup();render();}
   if(el instanceof HTMLSelectElement&&el.id==='taboo-picker'){tabooSelected=el.value;render();}
@@ -499,7 +542,7 @@ app.addEventListener('change',event=>{
   if(el instanceof HTMLSelectElement&&el.id==='prompt-activity-mode'){promptActivityMode=el.value as ActivityMode;promptSession=undefined;render();}
   if(el instanceof HTMLSelectElement&&el.dataset.promptFixed){promptFixed[el.dataset.promptFixed]=el.value;promptSession=undefined;}
   if(el instanceof HTMLSelectElement && el.id==='deck-picker') {selected=el.value;resetLookup();render();}
-  if(el instanceof HTMLSelectElement && el.id==='restore-mode') {restoreMode=el.value==='replace'?'replace':'add';render();}
+  if(el instanceof HTMLSelectElement && el.id==='restore-mode') {restoreMode=el.value==='replace'?'replace':'add';replaceAcknowledged=false;render();}
   if(el instanceof HTMLInputElement && el.id==='background-audio') audio.keepInBackground=el.checked;
   if(el instanceof HTMLInputElement && el.id==='round-loop') loopForRound=el.checked;
   if(el instanceof HTMLInputElement && el.id==='show-countdown') showCountdown=el.checked;
@@ -507,7 +550,7 @@ app.addEventListener('change',event=>{
     const file=el.files?.[0];if(!file)return;pendingBackup=undefined;
     void (async()=>{
       if(file.size>MAX_BACKUP_BYTES)throw new Error('Choose a backup smaller than 20 MB.');
-      const preview=parseBackup(await file.text());pendingBackup=preview;backupFilename=file.name;restoreMode='add';render();say('Backup checked. Review it before importing.');
+      const preview=parseBackup(await file.text());pendingBackup=preview;backupFilename=file.name;restoreMode='add';replaceAcknowledged=false;render();say('Backup checked. Review it before importing.');
     })().catch(error=>{render();say(String(error));});
   }
 });
@@ -531,17 +574,28 @@ app.addEventListener('pointercancel',()=>{deckSwipe=undefined;});
 document.addEventListener('click',event=>{
   const el=(event.target as HTMLElement).closest<HTMLButtonElement>('button');if(!el)return;
   if(el.classList.contains('swipe-front')&&performance.now()<suppressDeckClickUntil){event.preventDefault();return;}
+  if(el.dataset.revealKey){revealDeck(el.dataset.revealKey);el.closest('.swipe-deck')?.querySelector<HTMLButtonElement>('.swipe-delete')?.focus();return;}
   if(el.dataset.swipeDelete){void deleteLibraryDeck(el.dataset.swipeDelete,el.dataset.kind??'regular').catch(error=>say(String(error)));return;}
   if(!el.closest('.swipe-deck'))revealDeck('');
   if(el.dataset.tab){const tab=el.dataset.tab as typeof section;navigate(sectionRoot(tab),tab);}
   else if(el.dataset.route) { if(el.dataset.route==='backups') void action('backups').catch(error=>say(String(error)));else navigate(el.dataset.route); }
   else if(el.dataset.tabooDeck){tabooSelected=el.dataset.tabooDeck;cardPage=0;entry='';editingCard=undefined;route='taboo-editor';section='decks';render();}
-  else if(el.dataset.tabooEdit){editingCard=el.dataset.tabooEdit;openEntry('card');document.querySelector('#taboo-card-form')?.scrollIntoView({block:'start',behavior:'smooth'});}
+  else if(el.dataset.tabooEdit){editingCard=el.dataset.tabooEdit;openEntry('card');document.querySelector('#taboo-card-form')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
   else if(el.dataset.deck) {editorSection='cards';editingActivity=undefined;activityPage=0;selected=el.dataset.deck;cardPage=0;entry='';editingCard=undefined;route='editor';section='decks';say('');render();}
-  else if(el.dataset.activityEdit){editingActivity=el.dataset.activityEdit;openEntry('activity');document.querySelector('#activity-form')?.scrollIntoView({block:'start',behavior:'smooth'});}
+  else if(el.dataset.activityEdit){editingActivity=el.dataset.activityEdit;openEntry('activity');document.querySelector('#activity-form')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
   else if(el.dataset.activityMove||el.dataset.cardMove){const d=deck(),id=el.dataset.activityMove??el.dataset.cardMove,direction=el.dataset.direction==='-1'?-1:1;if(d&&id&&!entry)void mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;if(el.dataset.activityMove)target.activities=moveItem(target.activities,id,direction);else target.cards=moveItem(target.cards,id,direction);}).then(()=>say('Order saved.')).catch(error=>say(String(error)));}
-  else if(el.dataset.edit) {editingCard=el.dataset.edit;openEntry('card');document.querySelector('#card-form')?.scrollIntoView({block:'start',behavior:'smooth'});}
+  else if(el.dataset.edit) {editingCard=el.dataset.edit;openEntry('card');document.querySelector('#card-form')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
   else if(el.dataset.action) void action(el.dataset.action).catch(error=>say(`Could not complete action: ${String(error)}`));
+});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&revealedDeck){const row=Array.from(app.querySelectorAll<HTMLElement>('.swipe-deck')).find(row=>row.dataset.swipeKey===revealedDeck);revealDeck('');row?.querySelector<HTMLButtonElement>('.deck-reveal')?.focus();event.preventDefault();return;}
+  if(event.defaultPrevented||event.repeat||event.isComposing||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey)return;
+  const target=event.target instanceof HTMLElement?event.target:undefined;
+  if(target?.closest('input,textarea,select,button,summary,a,[contenteditable="true"]'))return;
+  if(route==='prompts'&&!promptDraw)return;
+  const intent=gameShortcut(route,event.key,round?.phase);
+  const control=intent?Array.from(app.querySelectorAll<HTMLButtonElement>('[data-action]')).find(el=>el.dataset.action===intent&&!el.disabled&&el.getClientRects().length>0):undefined;
+  if(control){event.preventDefault();void action(intent!).catch(error=>say(String(error)));}
 });
 async function readyAudio():Promise<void> {
   try{await gameAudio.unlock();}catch(error){timerSound=false;audio.log(String(error));say('Sound unavailable. You can still play with the controls.');}
@@ -642,5 +696,5 @@ async function setupOffline(): Promise<void> {
     registration.addEventListener('updatefound',()=>{const installing=registration.installing;installing?.addEventListener('statechange',ready);});
   } catch(error) {offline='Offline setup failed · reopen online';mark();say(`Offline setup: ${String(error)}`);}
 }
-try {library=await load();tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;restorePoint=await recovery();render();void storageProtection(true);void setupOffline();}
+try {try{preferences=await loadPreferences();}catch{/* Preferences must never block deck recovery. */}library=await load();tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;restorePoint=await recovery();render();void storageProtection(true);void setupOffline();}
 catch(error) {library=emptyLibrary();loadFailure=String(error);futureData=error instanceof NewerFormatError;try{restorePoint=await recovery();}catch{}render();void setupOffline();}

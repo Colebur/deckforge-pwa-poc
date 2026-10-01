@@ -1,3 +1,4 @@
+import {decodePreferences,type Preferences} from './refinements.js';
 import { emptyLibrary, type Library } from './model.js';
 import { decodeState, encodeState, NewerFormatError } from './backup.js';
 let database: Promise<IDBDatabase> | undefined;
@@ -68,4 +69,15 @@ export async function recovery(): Promise<Recovery | null> {
   const previous = await read('previous');
   if(previous === undefined) return null;
   try { return {library: decodeState(previous), savedAt: null}; } catch { return null; }
+}
+
+// Preferences use a separate key; changing them never rewrites a deck or recovery copy.
+export async function loadPreferences():Promise<Preferences>{return decodePreferences(await read('preferences'));}
+export async function savePreferences(preferences:Preferences):Promise<void>{
+  const db=await open();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction('state','readwrite');
+    tx.objectStore('state').put(decodePreferences(preferences),'preferences');
+    tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error('Preference save canceled.'));
+  });
 }
