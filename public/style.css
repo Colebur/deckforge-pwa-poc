@@ -73,3 +73,5 @@ body.work-presentation{max-width:1000px;padding-bottom:calc(env(safe-area-inset-
 .actions>button.full{grid-column:1/-1}
 
 .work-presentation .lookup-display .prompt-content{width:100%;min-width:0}
+
+.deck-modes{font-size:12px!important;line-height:1.4;margin-top:4px}.pause-note{text-align:center}.results li{overflow-wrap:anywhere}

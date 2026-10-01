@@ -44,3 +44,11 @@ test('keyboard intents stay contextual and never start or end rounds',()=>{
  for(const route of ['library','editor','home'])assert.equal(gameShortcut(route,' '),undefined);
  for(const route of ['catchphrase','headbands','taboo'])assert.equal(gameShortcut(route,'Escape','running'),undefined);
 });
+
+test('card-count sorting combines filters, keeps alphabetical ties and never reorders cards',()=>{
+ const source=[{...decks[0],cards:[1,2]},{...decks[1],cards:[1,2,3]},{...decks[2],cards:[1,2,3]}];
+ const before=structuredClone(source);
+ assert.deepEqual(filterLibrary(source,{...filter,sort:'cards'}).map(d=>d.id),['a','b','z']);
+ assert.deepEqual(filterLibrary(source,{...filter,sort:'cards',context:'work'}).map(d=>d.id),['b']);
+ assert.deepEqual(source,before);
+});
