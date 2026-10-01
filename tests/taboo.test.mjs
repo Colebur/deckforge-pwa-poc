@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {importTaboo,TabooRound,TabooGame} from '../dist/taboo.js';
 import {decodeState,exportBackup,parseBackup,restoreBackup} from '../dist/backup.js';
 const cards=Array.from({length:3},(_,i)=>({id:`c${i}`,text:`Answer ${i}`,forbidden:['one','two','three','four','five']}));
-const old={decks:[{id:'regular',name:'Regular',cards:[{id:'a',text:'Original'}]}],duration:60,probe:null};
+const old={decks:[{id:'regular',name:'Regular',activities:[],cards:[{id:'a',text:'Original'}]}],duration:60,probe:null};
 const library={...old,tabooDecks:[{id:'taboo',name:'Taboo',cards}],tabooTeams:['Red','Blue'],tabooDuration:0};
 test('Taboo import strips prefixes and rejects a partial batch with a line number',()=>{
   assert.deepEqual(importTaboo('1. Cat | pet | fur | meow | kitten | animal\n\n• Dog | bark | puppy | pet | tail | animal').map(c=>c.text),['Cat','Dog']);
