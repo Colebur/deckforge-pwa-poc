@@ -17,3 +17,8 @@ Earlier physical-device trials reported working Home Screen installation, saved 
 Physical-device acceptance remains necessary for the new presentation safe areas, touch targets, VoiceOver and existing audio/tilt behavior. No automated test simulates a physical iPhone sensor or installation.
 
 Current local browser checks confirm the 50-card page, Expand All to 55 cards and collapse, cleaned import review with repeated-line detection and optional skipping, stale-review invalidation after text editing, Activity draft preview, independent deck copy, and Work presentation hide/show/exit retaining the same card. A 390×844 presentation preview has no horizontal overflow. Physical acceptance is still pending.
+
+## 0.12.0 validation
+Strict TypeScript compilation and production build succeeded (32 cached assets). All 79 Node tests pass. Added checks cover card-count ordering with alphabetical ties/nonmutation, session-only Catchphrase review reset, and pause/deadline rejection across timed modes.
+
+Local browser: combined Work/name filters, Most cards first and Clear; Headbands manual summary/replay/pause/resume/setup return; Catchphrase two advances, 15-second expiry, review and No point; Taboo complete-deck outcome review. Browser warning/error logs empty; horizontal overflow absent at the tested viewport. Cached preview updated normally without resetting its existing library. Physical iPhone Home Screen/offline/audio/motion/Reduce Motion checks remain manual (PROJECT_READINESS.md).

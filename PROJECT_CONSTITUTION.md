@@ -18,7 +18,7 @@ A regular Deck contains many Cards and many ordered Activities. Activities norma
 Support facilitator-controlled interaction and readable shared-screen presentation. Participants may be unable to handle staff phones; future designs should work with a facilitator retaining possession, including use alongside physical cards/objects. Do not create a separate Facilitator Mode without approval.
 
 ## Roadmap context only
-Possible future modes include trivia, Jeopardy-inspired, Family Feud-inspired, Blank Slate-inspired, categories, voting/ranking, drawing/guessing and collaboration. Possible navigation: One Device / Facilitator, Multiplayer, Decks, Settings. These are not current implementation requests.
+Possible future modes include trivia, Jeopardy-inspired, Family Feud-inspired, Blank Slate-inspired, categories, voting/ranking, drawing/guessing and collaboration. Current navigation is Play / Work / Decks. Play and Work share game engines and one deck library; Work prioritizes Jenga and Prompt Picker. Future multiplayer may distinguish one device from everyone’s device within Play. That is roadmap context, not an implementation request.
 
 If multiplayer is explicitly approved later, start with a small “Vote Test” proof of concept before complex games. Use temporary nicknames, room codes/QR codes, host roles and ephemeral server-assisted realtime state. Test private input, synchronized reveal, disconnect/reconnect and automatic expiry/deletion of abandoned rooms. No permanent accounts, multiplayer history or server-side personal deck library by default.
 
