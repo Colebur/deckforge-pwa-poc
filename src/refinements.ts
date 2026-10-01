@@ -1,12 +1,13 @@
 // Content-independent library tools and local preferences. No browser APIs here.
 import {alphabeticalDecks,type Library} from './model.js';
 import type {DeckMetadata} from './modes.js';
-export interface LibraryFilter {search:string;context:string;mode:string}
-export function filterLibrary<T extends DeckMetadata & {name:string}>(decks:readonly T[],filter:LibraryFilter):T[] {
+export interface LibraryFilter {search:string;context:string;mode:string;sort?:'name'|'cards'}
+export function filterLibrary<T extends DeckMetadata & {name:string;cards:readonly unknown[]}>(decks:readonly T[],filter:LibraryFilter):T[] {
   const term=filter.search.trim().toLocaleLowerCase();
-  return alphabeticalDecks(decks.filter(d=>d.name.toLocaleLowerCase().includes(term) &&
+  const matches=alphabeticalDecks(decks.filter(d=>d.name.toLocaleLowerCase().includes(term) &&
     (filter.context==='all'||d.deckContext===filter.context) &&
     (filter.mode==='all'||(filter.mode==='unassigned'?d.compatibleModes.length===0:d.compatibleModes.includes(filter.mode)))));
+  return filter.sort==='cards'?matches.sort((a,b)=>b.cards.length-a.cards.length):matches;
 }
 export interface Preferences {largeText:boolean;backupReminders:boolean;reminderSince:string|null;lastExport:string|null;lastConfirmedBackup:string|null;snoozedUntil:string|null}
 export const defaultPreferences=():Preferences=>({largeText:false,backupReminders:false,reminderSince:null,lastExport:null,lastConfirmedBackup:null,snoozedUntil:null});

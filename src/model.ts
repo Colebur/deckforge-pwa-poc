@@ -42,6 +42,7 @@ export function lookup(cards: readonly Card[], number: string): number {
 }
 export class Round {
   phase: 'running' | 'paused' | 'ended' = 'running';
+  readonly results: Card[] = [];
   score = 0;
   passed = 0;
   remaining: number;
@@ -66,6 +67,7 @@ export class Round {
   answer(correct: boolean, now: number): boolean {
     this.tick(now);
     if (this.phase !== 'running') return false;
+    this.results.push({...this.current});
     if (correct) this.score++; else this.passed++;
     this.current = this.draw();
     return true;
@@ -74,7 +76,7 @@ export class Round {
   resume(now: number): void { if(this.phase==='paused') { this.deadline=now+this.remaining; this.phase='running'; } }
   restart(duration: number, now: number): void {
     if(this.phase!=='ended') throw new Error('End the round first.');
-    this.remaining=duration*1000;this.deadline=now+this.remaining;this.phase='running';this.score=0;this.passed=0;this.current=this.draw();
+    this.remaining=duration*1000;this.deadline=now+this.remaining;this.phase='running';this.results.length=0;this.score=0;this.passed=0;this.current=this.draw();
   }
   private draw(): Card {
     if (!this.bag.length) {
