@@ -88,3 +88,17 @@ body[data-context=link]{--accent:var(--work-accent);--soft:var(--work-soft)}
 .wheel-puzzle { letter-spacing:.13em;white-space:pre-wrap; }
 .multiplayer .check { display:flex;align-items:center;gap:12px;margin-top:20px; }
 .multiplayer .check input { width:24px;min-height:24px; }
+
+/* Mirror-friendly audience canvas: scales to the display, including 1080p/4K. */
+body.work-presentation,body.tv-audience{max-width:none;padding:clamp(12px,2vw,48px);padding-bottom:80px;}
+.tv-frame,.work-presentation .lookup-display,.work-presentation .prompt-picker{box-sizing:border-box;width:100%;max-width:177.78vh;aspect-ratio:16/9;min-height:0!important;margin:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:clamp(10px,2vh,28px);padding:clamp(16px,3vw,64px);overflow-wrap:anywhere;}
+.work-presentation .prompt,.tv-prompt{font-size:clamp(32px,5vw,120px)!important;line-height:1.2;margin:0;flex:1;display:flex;align-items:center;justify-content:center;width:100%;}
+.tv-heading{display:flex;justify-content:space-between;width:100%;gap:20px;font-size:clamp(18px,1.7vw,40px);}
+.tv-frame p,.tv-answer{font-size:clamp(20px,2vw,48px);margin:0;}
+.tv-results{width:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;font-size:clamp(18px,1.5vw,36px);}
+.tv-results>div{display:flex;flex-direction:column;gap:8px;padding:16px;background:var(--panel);border-radius:20px;}
+.tv-tools{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:12px;margin:16px auto;}
+.tv-audience #main-tabs,.tv-audience header,.tv-audience footer{display:none!important;}
+.work-presentation .game-controls,.work-presentation .lookup-display>.row{width:100%;flex:none;}
+@media(max-width:700px) and (orientation:portrait){.tv-frame,.work-presentation .lookup-display,.work-presentation .prompt-picker{aspect-ratio:auto;min-height:70dvh!important;}.tv-results{grid-template-columns:1fr;}}
+@media(orientation:landscape){.tv-frame,.work-presentation .lookup-display,.work-presentation .prompt-picker{max-width:calc((100dvh - 140px)*16/9);}.tv-results{overflow:auto;max-height:30dvh;}.tv-frame .tv-prompt{font-size:clamp(28px,4vw,100px)!important;}}
