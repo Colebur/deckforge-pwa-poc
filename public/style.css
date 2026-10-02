@@ -81,3 +81,10 @@ body[data-context=link]{--accent:var(--work-accent);--soft:var(--work-soft)}
 .multiplayer section,.multiplayer .category-review{padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:22px;margin:16px 0}
 .multiplayer .review-answer{padding:14px 0;border-top:1px solid var(--line)}
 .multiplayer .review-answer p{margin:6px 0}.multiplayer .round-heading{display:flex;justify-content:space-between;align-items:center}.multiplayer .scoreboard{padding-left:20px}.multiplayer button{margin:6px 0}.multiplayer .excluded>p{color:var(--muted)}
+
+/* Link game screens share the existing mobile controls and safe-area layout. */
+.clue-board { display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px; }
+.party-question,.wheel-puzzle { font-size:clamp(1.6rem,5vw,2.7rem);font-weight:650;text-align:center;line-height:1.35;margin:24px 0;overflow-wrap:anywhere; }
+.wheel-puzzle { letter-spacing:.13em;white-space:pre-wrap; }
+.multiplayer .check { display:flex;align-items:center;gap:12px;margin-top:20px; }
+.multiplayer .check input { width:24px;min-height:24px; }
