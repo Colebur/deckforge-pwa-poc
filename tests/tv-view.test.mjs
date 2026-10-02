@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {audienceMarkup} from '../dist/tv-view.js';
+const state={code:'ABCDEFGH',stage:'lobby',players:[{id:'a',name:'<Guest>'}],question:'<script>Question</script>',category:'Space',points:100,index:0,count:2,results:[],totals:{},answer:'Mars'};
+test('audience lobby displays room code without question/answer; question screen has no host input controls',()=>{const lobby=audienceMarkup(state);assert.ok(!lobby.includes('Mars'));assert.ok(!lobby.includes('Question</script>'));const playing=audienceMarkup({...state,stage:'answering',answer:''});assert.ok(playing.includes('&lt;script&gt;'));assert.ok(!playing.includes('<input'));assert.ok(!playing.includes('Save Ruling'));assert.ok(playing.includes('Answer on your own device'));});
+test('revealed display escapes player answers and shows finalized totals',()=>{const html=audienceMarkup({...state,stage:'scored',results:[{id:'a',text:'<img src=x>',points:100}],totals:{a:200}});assert.ok(html.includes('&lt;Guest&gt;'));assert.ok(html.includes('&lt;img'));assert.ok(!html.includes('<img'));assert.ok(html.includes('200 total'));});
