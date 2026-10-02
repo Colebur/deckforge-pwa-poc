@@ -77,7 +77,7 @@ body.work-presentation{max-width:1000px;padding-bottom:calc(env(safe-area-inset-
 .deck-modes{font-size:12px!important;line-height:1.4;margin-top:4px}.pause-note{text-align:center}.results li{overflow-wrap:anywhere}
 
 /* Network rooms use the shared surfaces, independent of saved deck data. */
-body[data-context=link]{--accent:var(--work-accent);--soft:var(--work-soft)}
+body[data-context=link]{--accent:var(--link-accent);--soft:var(--link-soft)}
 .multiplayer section,.multiplayer .category-review{padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:22px;margin:16px 0}
 .multiplayer .review-answer{padding:14px 0;border-top:1px solid var(--line)}
 .multiplayer .review-answer p{margin:6px 0}.multiplayer .round-heading{display:flex;justify-content:space-between;align-items:center}.multiplayer .scoreboard{padding-left:20px}.multiplayer button{margin:6px 0}.multiplayer .excluded>p{color:var(--muted)}
@@ -104,3 +104,20 @@ body.work-presentation,body.tv-audience{max-width:none;padding:clamp(12px,2vw,48
 @media(orientation:landscape){.tv-frame,.work-presentation .lookup-display,.work-presentation .prompt-picker{max-width:calc((100dvh - 140px)*16/9);}.tv-results{overflow:auto;max-height:30dvh;}.tv-frame .tv-prompt{font-size:clamp(28px,4vw,100px)!important;}}
 /* Manual review uses the same Work colors and universal deck library. */
 .study-session{max-width:900px;margin:auto}.study-heading{display:flex;justify-content:space-between;gap:16px;align-items:center;color:var(--muted)}.study-heading strong{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--accent)}.study-card{width:100%;min-height:clamp(260px,42dvh,520px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;border:1px solid var(--line);border-radius:24px;background:var(--panel);color:inherit;padding:24px;box-shadow:0 8px 24px #00000006;margin:12px 0;overflow-wrap:anywhere}.study-side,.study-hint{font-size:14px;font-weight:400;color:var(--muted)}.study-text{flex:1;display:flex;align-items:center;justify-content:center;white-space:pre-wrap;font-size:clamp(24px,5vw,46px);line-height:1.35;font-weight:600}.study-card:focus-visible{outline:3px solid var(--accent);outline-offset:3px}.study-session>.actions{margin-top:10px}.study-back-preview{display:block;white-space:pre-wrap;margin-top:6px;font-size:14px;font-weight:400}@media(orientation:landscape){.study-card{min-height:230px}.study-text{font-size:clamp(24px,4vw,46px)}}
+
+/* A full-height app shell keeps short screens and immersive games consistent. */
+:root{--link-accent:#167342;--link-soft:#e7f6ed}
+html{min-height:100%}body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}body>header,body>#notice,body>footer{flex-shrink:0}#app{flex:1;min-width:0;width:100%}
+.study-session{min-height:100%;display:flex;flex-direction:column}.study-card{backface-visibility:hidden;transform-origin:center center}.study-session .study-card{flex:1}
+body.playing #app{display:flex;flex-direction:column}body.playing .game{flex:1}
+@media(min-width:768px){body:not(.playing):not(.work-presentation):not(.tv-audience):not(.lookup-screen){max-width:900px}#main-tabs{max-width:900px}.study-card{min-height:clamp(260px,42dvh,600px)}}
+@media(prefers-color-scheme:dark){:root{--link-accent:#79dea6;--link-soft:#163425}}
+
+#app{display:flex;flex-direction:column}#app>.study-session{width:100%;flex:1;margin:0 auto}
+/* On short, wide screens the card and controls sit side by side. */
+@media(orientation:landscape) and (max-height:750px){
+.study-session{display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:8px 18px;align-content:start;align-items:center}
+.study-heading{grid-column:1/-1}.study-session>p:first-of-type{grid-column:1/-1;margin:0;font-size:13px}
+.study-session .study-card{grid-column:1;grid-row:3/7;min-height:220px;height:100%;margin:0;padding:18px}
+.study-session>button.primary[data-action=study-flip],.study-session>.actions,.study-session>p:last-child{grid-column:2;margin:0}.study-session .actions{display:flex;flex-wrap:wrap}.study-session .actions button{flex:1;padding:10px;min-height:44px}.study-session>p:last-child{font-size:12px}.study-text{font-size:clamp(22px,3vw,40px)}
+}
