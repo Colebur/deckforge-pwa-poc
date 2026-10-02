@@ -1,3 +1,4 @@
+import {mountAudience} from './tv-view.js';
 import {mountMultiplayer} from './multiplayer.js';
 import {duplicateGroups,copyDeck,reviewImport,importItems,type ImportReview} from './editor-tools.js';
 import {esc,button,cardDisplay,deckOptions as optionsHtml,pickerEscape as escapeHtml} from './ui.js';
@@ -52,6 +53,8 @@ let suppressDeckClickUntil=0;
 let route = 'home';
 let section:'play'|'work'|'link'|'decks'='play';
 let stopMultiplayer:(()=>void)|undefined;
+let stopAudience:(()=>void)|undefined;
+const tvCode=new URL(location.href).searchParams.get('tv'),tvSecret=new URLSearchParams(location.hash.slice(1)).get('display');
 if(new URL(location.href).searchParams.has('room')){section='link';route='link';}
 let launchContext:LaunchContext='play';
 let showAllDecks=false;
@@ -104,7 +107,7 @@ function importPreview():string {
   return `<section id="import-review" class="panel"><h3>Review Import</h3><p>${pendingImport.items.length} cleaned lines · ${pendingImport.duplicates} duplicates (existing or repeated lines).</p><label class="check"><input id="skip-import-duplicates" type="checkbox" ${skipImportDuplicates?'checked':''}> Skip duplicates</label><p class="muted">Duplicates are kept unless you choose to skip them. Review the cleaned text before saving.</p><ol class="import-preview">${pendingImport.items.map(c=>`<li>${esc(c.text)}${c.forbidden?`<small>${c.forbidden.map(esc).join(' · ')}</small>`:''}</li>`).join('')}</ol>${button('confirm-import','Confirm Import','primary full')}</section>`;
 }
 function presentationToggle():string {
-  return presenting?`<div class="presentation-bar">${button('presentation-controls',presentationControls?'Hide Controls':'Show Controls','quiet')}${presentationControls?button('presentation','Exit Presentation','quiet'):''}</div>`:button('presentation','Presentation View','quiet full');
+  return presenting?`<div class="presentation-bar">${button('presentation-controls',presentationControls?'Hide Controls':'Show Controls','quiet')}${presentationControls?button('tv-fullscreen','Full Screen','quiet')+button('presentation','Exit TV View','quiet'):''}</div>`:button('presentation','TV View','quiet full');
 }
 function updateActivityPreview():void {
   const text=app.querySelector<HTMLTextAreaElement>('#activity-text')?.value??'';
@@ -145,6 +148,7 @@ function organization(d:Deck|TabooDeck,format:'regular'|'taboo'):string {
   return `<details class="panel deck-organization"><summary>Deck organization · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</summary><form id="organization-form" data-format="${format}"><fieldset><legend>Best suited for</legend><div class="context-options">${['play','work','both'].map(c=>`<label><input type="radio" name="deckContext" value="${c}" ${d.deckContext===c?'checked':''}> ${c==='both'?'Both':c==='play'?'Play':'Work'}</label>`).join('')}</div></fieldset><fieldset><legend>Available in</legend>${MODES.filter(m=>m.format===format).map(m=>`<label class="check"><input type="checkbox" name="compatibleModes" value="${m.id}" ${d.compatibleModes.includes(m.id)?'checked':''} ${m.id==='lookup'&&d.cards.length!==54?'disabled':''}> ${m.title}${m.id==='lookup'&&d.cards.length!==54?' — requires exactly 54 cards':''}</label>`).join('')}</fieldset><p class="muted">Context recommends decks; it never restricts access. Unchecked modes can still find this deck with Show All Decks when its card format and size are valid. Jenga requires 54 cards; an existing assignment stays saved but is unavailable at other sizes.${format==='taboo'?' Taboo cards require five forbidden words and use their separate editor.':''}</p><button class="primary full">Save Organization</button></form></details>`;
 }
 function render(): void {
+  if(tvCode&&tvSecret){if(!stopAudience){document.querySelector<HTMLElement>('header')!.hidden=true;document.querySelector<HTMLElement>('#main-tabs')!.hidden=true;document.querySelector<HTMLElement>('footer')!.hidden=true;stopAudience=mountAudience(app,tvCode,tvSecret);}return;}
   navigationAnimation?.cancel();
   if(route!=='link'){stopMultiplayer?.();stopMultiplayer=undefined;}
   const active=document.activeElement instanceof HTMLElement && app.contains(document.activeElement)?document.activeElement:undefined;
@@ -160,7 +164,7 @@ function render(): void {
   document.body.classList.toggle('has-tabs',!playing);
   const tabs=document.querySelector<HTMLElement>('#main-tabs')!;tabs.hidden=playing;
   tabs.innerHTML=[['play','▶','Play'],['work','▦','Work'],['link','⇄','Link'],['decks','▱','Decks']].map(([id,icon,title])=>`<button data-tab="${id}" ${section===id?'aria-current="page"':''}><span aria-hidden="true">${icon}</span>${title}</button>`).join('');
-  document.body.classList.toggle('lookup-screen',route==='lookup');
+  document.body.classList.toggle('lookup-screen',route==='lookup'&&availableDecks().visible.length>0);
   document.querySelector<HTMLButtonElement>('#rename-button')!.hidden=!['editor','taboo-editor'].includes(route)||!!loadFailure;
   document.querySelector<HTMLElement>('#page-title')!.textContent=({link:'Link',home:section==='work'?'Work':'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Jenga',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
   document.querySelector<HTMLButtonElement>('#home-button')!.hidden=route==='home'||route==='link';
@@ -360,7 +364,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.14.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.15.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
@@ -423,7 +427,8 @@ async function action(name: string): Promise<void> {
   if(name.startsWith('award-')){const index=name==='award-none'?null:Number(name.slice(6));if(match?.award(index))render();return;}
   switch(name) {
     case 'expand-cards':expandedCards=!expandedCards;cardPage=0;render();break;
-    case 'presentation':presenting=!presenting;presentationControls=true;render();break;
+    case 'presentation':presenting=!presenting;presentationControls=true;render();if(!presenting&&document.fullscreenElement)void document.exitFullscreen().catch(()=>{});break;
+    case 'tv-fullscreen':if(document.documentElement.requestFullscreen)void document.documentElement.requestFullscreen().catch(()=>say('Use landscape and your device’s screen-mirroring controls.'));else say('Use landscape and your device’s screen-mirroring controls.');break;
     case 'presentation-controls':presentationControls=!presentationControls;render();break;
     case 'duplicate-deck':{const source=route==='taboo-editor'?tabooDeck():d;if(!source)break;const names=(route==='taboo-editor'?library.tabooDecks??[]:library.decks).map(x=>x.name);const copy=copyDeck(source,names,uid);await mutate(next=>{if('activities' in copy)next.decks.push(copy);else(next.tabooDecks??=[]).push(copy);});if('activities' in copy)selected=copy.id;else tabooSelected=copy.id;expandedCards=false;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';render();say('Independent copy saved. The original deck is unchanged.');break;}
     case 'confirm-import':{const review=pendingImport;if(!review)break;const target=review.kind==='taboo'?tabooDeck():d;if(!target||target.id!==review.deckId)throw new Error('Reopen import for this deck.');const existing=review.kind==='activities'?(target as Deck).activities:target.cards;const items=importItems(review,existing,skipImportDuplicates);if(!items.length){say('No new lines to import. Uncheck Skip duplicates to keep them.');break;}await mutate(next=>{if(review.kind==='taboo'){const t=next.tabooDecks!.find(x=>x.id===target.id)!;items.forEach(c=>t.cards.push({id:uid(),text:c.text,forbidden:c.forbidden!}));}else{const t=next.decks.find(x=>x.id===target.id)!;if(review.kind==='activities'){const createdAt=new Date().toISOString();items.forEach(c=>t.activities.push({id:uid(),text:c.text,createdAt}));}else items.forEach(c=>t.cards.push({id:uid(),text:c.text}));}});pendingImport=undefined;bulkDraft='';entry='';render();say(`${items.length} ${review.kind==='activities'?'activities':'cards'} saved.`);break;}
