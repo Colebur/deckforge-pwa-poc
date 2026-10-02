@@ -1,11 +1,12 @@
 # DeckForge
 
-A local-first deck toolkit for party games, group activities and facilitation. Create content once and reuse it across games. Custom decks remain a core feature, with no accounts, analytics, ads or backend.
+A local-first deck toolkit for party games, group activities and facilitation. Create content once and reuse it across games. Custom decks remain a core feature, with no accounts, analytics or ads. Single-device features need no backend; optional multiplayer uses a temporary-room service.
 
 ## Navigation and games
 
 - **Play:** Catchphrase, Headbands and Taboo.
 - **Work:** Jenga and Prompt Picker first, followed by the same party game engines.
+- **Link:** Create or join temporary multiplayer Categories rooms.
 - **Decks:** one regular deck library, with a separate secondary library for Taboo cards.
 
 Regular decks contain ordered cards and Activities. Context (`play`, `work`, `both`) recommends decks without restricting access. Intended game compatibility organizes pickers; Show All Decks offers an escape hatch when the card format and size fit the game. Jenga requires exactly 54 cards in block-number order.
@@ -45,7 +46,7 @@ The local server is a development preview. The preview server binds to localhost
 
 On iPhone, open the HTTPS deployment in Safari, use Share → Add to Home Screen, then launch the icon. Android browsers offer an install/add-to-home-screen option; desktop installation depends on browser support.
 
-Settings → Check for Update downloads updates. Close **all** windows for this app and reopen to activate them. Updates wait rather than reloading an active round. Version **0.12.0** should appear in Settings after this release. Keep the same site address: browser storage belongs to its origin.
+Settings → Check for Update downloads updates. Close **all** windows for this app and reopen to activate them. Updates wait rather than reloading an active round. Version **0.13.0** should appear in Settings after this release. Keep the same site address: browser storage belongs to its origin.
 
 ## Local data, offline use and backups
 
@@ -57,7 +58,7 @@ Restore defaults to adding independent copies. Replacement requires an explicit 
 
 ## iPhone acceptance checklist
 
-1. Export a backup, update, close all app windows and reopen. Check **0.12.0** and **Ready/cached offline**.
+1. Export a backup, update, close all app windows and reopen. Check **0.13.0** and **Ready/cached offline**.
 2. Open a deck with over 50 cards. Expand All, inspect the last card, then restore 50-item pages. Card order/numbers should stay unchanged.
 3. Duplicate a deck. Edit the copy; confirm the original cards, Activities and organization remain intact.
 4. Paste numbered lines with one duplicate. Review without saving, change a line and verify the review disappears. Review again; compare keeping duplicates with Skip duplicates.
@@ -85,7 +86,7 @@ The shared picker extraction preserves existing ranking/filter behavior. Sharing
 
 Motion/audio require browser support, permissions and user interaction. A motion sensor detects orientation/movement, not physical forehead contact. Haptics may be unavailable on iPhone. Screen lock, backgrounding and interruptions can suspend audio or gameplay; foreground trials do not prove reliable background playback. Exact physical sound, sensor feel and safe-area behavior require device testing. HTTPS hosting and cached assets enable offline use but do not promise permanent storage or perpetual hosting.
 
-No multiplayer, accounts, cloud sync, billing or native packaging are implemented by this release. The separate native project is outside this repository.
+Optional Categories multiplayer requires internet. Accounts, cloud sync, billing and native packaging are not implemented. The separate native project is outside this repository.
 
 ## Navigation motion
 
