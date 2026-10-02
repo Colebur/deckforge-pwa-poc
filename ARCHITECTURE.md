@@ -22,3 +22,9 @@ Compile TypeScript, build the PWA, then run Node tests. Browser checks cover lay
 
 ## Boundaries
 No account, analytics, backend, cloud sync, payments or multiplayer exists. The native SwiftUI project is separate and outside this repository. The software license is undecided; a public repository alone is not a selected open-source license.
+
+## Link boundary
+
+`multiplayer.ts` mounts a contained UI with its own listeners and timers. Unmount aborts requests and cancels timers; tab-scoped credentials/drafts allow resuming. `room-transport.ts` isolates fetch, endpoint selection and cancellation. Room rules and scoring remain authoritative in the separate Worker. `category-source.ts` draws from a read-only snapshot of local card text. No IndexedDB schema change is required. Service-worker caching excludes cross-origin requests and POST requests.
+
+The Worker permits its own origin and an explicitly configured PWA origin, supplies preflight/error CORS headers, and still checks room member/host credentials. No cookies or permanent identities are introduced. A future realtime transport can replace the request adapter without changing saved deck data.

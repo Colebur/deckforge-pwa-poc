@@ -100,3 +100,11 @@ Decks and Taboo Decks support name search, context/compatibility filters, and Na
 Catchphrase reviews advanced cards and the last card without changing its one-point team rule. Taboo reviews Correct/Passed/Taboo outcomes. Headbands Play Again starts with the same choices and repeats motion preparation when enabled. All finished timed games offer Change Deck or Settings; changing setup starts a new match rather than carrying team totals. Paused screens explain that time is stopped. Reviews remain session-only.
 
 See [architecture](ARCHITECTURE.md) and the [constitution/readiness review and device checklist](PROJECT_READINESS.md). The license remains undecided; no open-source license is applied by this release.
+
+## Multiplayer Categories (0.13.0)
+
+Link → Create Room starts a Categories room. Enter a temporary nickname, choose a local deck as the category source or enter categories manually, and share the join link/code. Guests use Link → Join Room. The default is 12 categories and three minutes. Players answer privately; the host reveals answers, reviews automatic duplicate exclusions, finalizes scores, and starts the next round.
+
+Only selected round categories, temporary nicknames and answers reach the room service. Deck libraries remain local. Multiplayer requires internet; existing modes retain offline behavior. Switching tabs pauses room requests; returning resumes the same tab’s saved role. Rooms expire after 15 minutes without game/join activity or two hours total. Closing the tab or clearing browser storage can lose recovery credentials.
+
+For local multiplayer testing, run the separate DeckForge-Vote-Test preview on port 4180 as well as this preview on 4173. Production uses the existing room service.
