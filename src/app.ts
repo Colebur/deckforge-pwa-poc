@@ -606,6 +606,7 @@ app.addEventListener('change',event=>{
   if(el instanceof HTMLInputElement&&el.dataset.promptId){if(el.checked)promptIds?.add(el.dataset.promptId);else promptIds?.delete(el.dataset.promptId);promptSession=undefined;render();}
   if(el instanceof HTMLSelectElement&&el.id==='prompt-activity-mode'){promptActivityMode=el.value as ActivityMode;promptSession=undefined;render();}
   if(el instanceof HTMLSelectElement&&el.dataset.promptFixed){promptFixed[el.dataset.promptFixed]=el.value;promptSession=undefined;}
+  if(el instanceof HTMLSelectElement && el.id==='study-direction') studyDirection=el.value==='back'?'back':'front';
   if(el instanceof HTMLSelectElement && el.id==='deck-picker') {selected=el.value;resetLookup();render();}
   if(el instanceof HTMLSelectElement && el.id==='restore-mode') {restoreMode=el.value==='replace'?'replace':'add';replaceAcknowledged=false;render();}
   if(el instanceof HTMLInputElement && el.id==='background-audio') audio.keepInBackground=el.checked;
