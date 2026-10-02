@@ -178,7 +178,7 @@ function render(): void {
   document.querySelector<HTMLButtonElement>('#settings-button')!.hidden=route==='settings' || !!loadFailure;
   document.querySelector<HTMLElement>('footer')!.hidden=!['settings','lab'].includes(route);
   if(loadFailure && route!=='backups') { renderStorageError(); return; }
-  if(route==='link'){if(!stopMultiplayer){app.innerHTML='<div id=multiplayer class=multiplayer><p id=room-status class=muted role=status aria-live=polite></p><div id=room-content></div></div>';stopMultiplayer=mountMultiplayer(app.querySelector('#room-content')!,app.querySelector('#room-status')!,library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)).map(d=>({id:d.id,name:d.name,items:d.cards.map(c=>c.text)})));}}
+  if(route==='link'){if(!stopMultiplayer){app.innerHTML='<div id=multiplayer class=multiplayer><p id=room-status class=muted role=status aria-live=polite></p><div id=room-content></div></div>';stopMultiplayer=mountMultiplayer(app.querySelector('#room-content')!,app.querySelector('#room-status')!,library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)).map(d=>({id:d.id,name:d.name,items:d.cards.map(c=>c.text)})),library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)));}}
   else if(route==='home') renderHome();
   else if(route==='library') renderLibrary();
   else if(route==='editor') renderEditor();
@@ -374,7 +374,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.16.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.17.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
