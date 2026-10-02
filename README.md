@@ -109,3 +109,5 @@ Link → Create Room starts a Categories room. Enter a temporary nickname, choos
 Only selected round categories, temporary nicknames and answers reach the room service. Deck libraries remain local. Multiplayer requires internet; existing modes retain offline behavior. Switching tabs pauses room requests; returning resumes the same tab’s saved role. Rooms expire after 15 minutes without game/join activity or two hours total. Closing the tab or clearing browser storage can lose recovery credentials.
 
 For local multiplayer testing, run the separate DeckForge-Vote-Test preview on port 4180 as well as this preview on 4173. Production uses the existing room service.
+
+Link also includes Trivia, Team Trivia, Clue Board, Survey Showdown and Word Wheel. See [Link game guide](LINK_GAMES.md) for Game Deck formats, host participation, first-edition rules, backups and device tests.
