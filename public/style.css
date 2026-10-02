@@ -75,3 +75,9 @@ body.work-presentation{max-width:1000px;padding-bottom:calc(env(safe-area-inset-
 .work-presentation .lookup-display .prompt-content{width:100%;min-width:0}
 
 .deck-modes{font-size:12px!important;line-height:1.4;margin-top:4px}.pause-note{text-align:center}.results li{overflow-wrap:anywhere}
+
+/* Network rooms use the shared surfaces, independent of saved deck data. */
+body[data-context=link]{--accent:var(--work-accent);--soft:var(--work-soft)}
+.multiplayer section,.multiplayer .category-review{padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:22px;margin:16px 0}
+.multiplayer .review-answer{padding:14px 0;border-top:1px solid var(--line)}
+.multiplayer .review-answer p{margin:6px 0}.multiplayer .round-heading{display:flex;justify-content:space-between;align-items:center}.multiplayer .scoreboard{padding-left:20px}.multiplayer button{margin:6px 0}.multiplayer .excluded>p{color:var(--muted)}

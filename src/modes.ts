@@ -26,4 +26,4 @@ export function modeDecks<T extends DeckMetadata & {name:string;cards:readonly u
   return {compatible,other,visible:all?[...compatible,...other]:compatible};
 }
 function rank(value:DeckContext,context:LaunchContext):number{return value===context?0:value==='both'?1:2;}
-export const sectionRoot=(section:'play'|'work'|'decks'):string=>section==='decks'?'library':'home';
+export const sectionRoot=(section:'play'|'work'|'link'|'decks'):string=>section==='link'?'link':section==='decks'?'library':'home';

@@ -1,0 +1,18 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {sectionRoot} from '../dist/modes.js';import {categoryPool,drawCategories} from '../dist/category-source.js';import {roomRequest} from '../dist/room-transport.js';
+test('Link has its own route; other sections retain their roots',()=>{assert.equal(sectionRoot('link'),'link');assert.equal(sectionRoot('play'),'home');assert.equal(sectionRoot('work'),'home');assert.equal(sectionRoot('decks'),'library');});
+test('category draw snapshots local text without mutating cards/history',()=>{const cards=Array.from({length:100},(_,i)=>({id:String(i),text:'Category '+i})),original=structuredClone(cards),used=['Category 0'];const draw=drawCategories(categoryPool(cards.map(c=>c.text)),used,()=>0.5);assert.equal(draw.length,12);assert.ok(!draw.includes('Category 0'));assert.deepEqual(cards,original);assert.deepEqual(used,['Category 0']);});
+test('transport sends explicit action data with bearer auth and no cookies/cache',async()=>{const originalFetch=globalThis.fetch,originalLocation=globalThis.location;let request;globalThis.location={hostname:'example.test'};globalThis.fetch=async(url,options)=>{request={url,options};return Response.json({state:{code:'ABCDEFGH'}});};try{const result=await roomRequest('cat-start',{config:{items:['Animals']}},'ABCDEFGH','temporary-secret',new AbortController().signal);assert.equal(result.body.state.code,'ABCDEFGH');assert.equal(request.options.credentials,'omit');assert.equal(request.options.cache,'no-store');assert.equal(request.options.headers.Authorization,'Bearer temporary-secret');assert.deepEqual(JSON.parse(request.options.body),{config:{items:['Animals']}});assert.ok(!request.url.includes('temporary-secret'));}finally{globalThis.fetch=originalFetch;if(originalLocation===undefined)delete globalThis.location;else globalThis.location=originalLocation;}});
+
+import {mountMultiplayer} from '../dist/multiplayer.js';
+test('multiplayer mount releases its listeners/timers and preserves decks',()=>{
+ const keys=['window','location','sessionStorage'];const originals=Object.fromEntries(keys.map(k=>[k,globalThis[k]]));
+ const browser=new EventTarget(),document=new EventTarget();document.hidden=false;browser.document=document;const timers=new Set();let id=0;
+ browser.setInterval=()=>{timers.add(++id);return id;};browser.setTimeout=()=>{timers.add(++id);return id;};browser.clearInterval=browser.clearTimeout=n=>timers.delete(n);
+ globalThis.window=browser;globalThis.location={href:'https://example.test/',hostname:'example.test'};const storage=new Map();globalThis.sessionStorage={getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
+ class Root extends EventTarget {innerHTML='';querySelector(){return null;}querySelectorAll(){return [];}}
+ const root=new Root(),status={textContent:''},decks=[{id:'a',name:'Animals',items:['Cats','Dogs']}],original=structuredClone(decks);
+ try{const stop=mountMultiplayer(root,status,decks);assert.match(root.innerHTML,/Create Room/);assert.match(root.innerHTML,/Join Room/);assert.equal(timers.size,2);
+ const click=new Event('click');Object.defineProperty(click,'target',{value:{closest:()=>({dataset:{action:'choose-create'}})}});root.dispatchEvent(click);assert.match(root.innerHTML,/Temporary nickname/);assert.ok(!root.innerHTML.includes('Vote Test'));const markup=root.innerHTML;stop();assert.equal(timers.size,0);root.dispatchEvent(click);assert.equal(root.innerHTML,markup);assert.deepEqual(decks,original);
+ }finally{for(const k of keys){if(originals[k]===undefined)delete globalThis[k];else globalThis[k]=originals[k];}}
+});
