@@ -111,3 +111,5 @@ Only selected round categories, temporary nicknames and answers reach the room s
 For local multiplayer testing, run the separate DeckForge-Vote-Test preview on port 4180 as well as this preview on 4173. Production uses the existing room service.
 
 Link also includes Trivia, Team Trivia, Clue Board, Survey Showdown and Word Wheel. See [Link game guide](LINK_GAMES.md) for Game Deck formats, host participation, first-edition rules, backups and device tests.
+
+[Party games release verification](RELEASE_VERIFICATION.md) records automated checks, local and hosted browser trials, and remaining physical-device tests.
