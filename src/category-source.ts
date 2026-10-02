@@ -9,7 +9,7 @@ export function readCategoryDecks(text:string):CategoryDeck[]{
  if(new TextEncoder().encode(text).byteLength>20*1024*1024)throw new Error('Choose a backup smaller than 20 MB.');
  let data;try{data=JSON.parse(text);}catch{throw new Error('Choose a valid DeckForge JSON backup.');}
  let decks:unknown;
- if(data?.format==='deckforge-pwa-backup'&&[1,2,3,4,5,6].includes(data.version))decks=data.library?.decks;
+ if(data?.format==='deckforge-pwa-backup'&&[1,2,3,4,5,6,7].includes(data.version))decks=data.library?.decks;
  else if(data?.format==='deckforge-pwa-poc-v1')decks=data.decks;
  else throw new Error('Choose a DeckForge PWA backup.');
  if(!Array.isArray(decks)||decks.length>10000)throw new Error('Invalid deck list.');

@@ -1,5 +1,5 @@
 import type {DeckMetadata} from './modes.js';
-export interface Card { id: string; text: string }
+export interface Card { id: string; text: string; back?: string }
 export interface Activity { id: string; text: string; createdAt: string }
 export interface Deck extends DeckMetadata { id: string; name: string; cards: Card[]; activities: Activity[] }
 export interface TabooCard extends Card { forbidden: string[] }
