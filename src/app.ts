@@ -1,3 +1,4 @@
+import {mountMultiplayer} from './multiplayer.js';
 import {duplicateGroups,copyDeck,reviewImport,importItems,type ImportReview} from './editor-tools.js';
 import {esc,button,cardDisplay,deckOptions as optionsHtml,pickerEscape as escapeHtml} from './ui.js';
 import {webShare} from './share.js';
@@ -49,7 +50,9 @@ async function setPreferences(change:(next:Preferences)=>void):Promise<void>{
 let revealedDeck="";
 let suppressDeckClickUntil=0;
 let route = 'home';
-let section:'play'|'work'|'decks'='play';
+let section:'play'|'work'|'link'|'decks'='play';
+let stopMultiplayer:(()=>void)|undefined;
+if(new URL(location.href).searchParams.has('room')){section='link';route='link';}
 let launchContext:LaunchContext='play';
 let showAllDecks=false;
 let selected = '';
@@ -143,6 +146,7 @@ function organization(d:Deck|TabooDeck,format:'regular'|'taboo'):string {
 }
 function render(): void {
   navigationAnimation?.cancel();
+  if(route!=='link'){stopMultiplayer?.();stopMultiplayer=undefined;}
   const active=document.activeElement instanceof HTMLElement && app.contains(document.activeElement)?document.activeElement:undefined;
   const focusId=active?.id;
   const focusAction=active?.dataset.action;
@@ -155,18 +159,19 @@ function render(): void {
   document.body.classList.toggle('home-screen',route==='home');
   document.body.classList.toggle('has-tabs',!playing);
   const tabs=document.querySelector<HTMLElement>('#main-tabs')!;tabs.hidden=playing;
-  tabs.innerHTML=[['play','▶','Play'],['work','▦','Work'],['decks','▱','Decks']].map(([id,icon,title])=>`<button data-tab="${id}" ${section===id?'aria-current="page"':''}><span aria-hidden="true">${icon}</span>${title}</button>`).join('');
+  tabs.innerHTML=[['play','▶','Play'],['work','▦','Work'],['link','⇄','Link'],['decks','▱','Decks']].map(([id,icon,title])=>`<button data-tab="${id}" ${section===id?'aria-current="page"':''}><span aria-hidden="true">${icon}</span>${title}</button>`).join('');
   document.body.classList.toggle('lookup-screen',route==='lookup');
   document.querySelector<HTMLButtonElement>('#rename-button')!.hidden=!['editor','taboo-editor'].includes(route)||!!loadFailure;
-  document.querySelector<HTMLElement>('#page-title')!.textContent=({home:section==='work'?'Work':'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Jenga',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
-  document.querySelector<HTMLButtonElement>('#home-button')!.hidden=route==='home';
+  document.querySelector<HTMLElement>('#page-title')!.textContent=({link:'Link',home:section==='work'?'Work':'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Jenga',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
+  document.querySelector<HTMLButtonElement>('#home-button')!.hidden=route==='home'||route==='link';
   const back=document.querySelector<HTMLButtonElement>('#home-button')!;
   back.dataset.action=route==='editor'?'back':route==='taboo-editor'?'taboo-library':'home';
   back.setAttribute('aria-label',route==='editor'?'Back to Deck Library':route==='taboo-editor'?'Back to Taboo Decks':`Back to ${section==='play'?'Play':section==='work'?'Work':'Decks'}`);
   document.querySelector<HTMLButtonElement>('#settings-button')!.hidden=route==='settings' || !!loadFailure;
   document.querySelector<HTMLElement>('footer')!.hidden=!['settings','lab'].includes(route);
   if(loadFailure && route!=='backups') { renderStorageError(); return; }
-  if(route==='home') renderHome();
+  if(route==='link'){if(!stopMultiplayer){app.innerHTML='<div id=multiplayer class=multiplayer><p id=room-status class=muted role=status aria-live=polite></p><div id=room-content></div></div>';stopMultiplayer=mountMultiplayer(app.querySelector('#room-content')!,app.querySelector('#room-status')!,library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)).map(d=>({id:d.id,name:d.name,items:d.cards.map(c=>c.text)})));}}
+  else if(route==='home') renderHome();
   else if(route==='library') renderLibrary();
   else if(route==='editor') renderEditor();
   else if(route==='lookup') renderLookup();
@@ -355,7 +360,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.12.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.13.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
@@ -389,7 +394,7 @@ function navigate(target: string,nextSection?:typeof section): void {
   gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
   presenting=false;presentationControls=true;expandedCards=false;pendingImport=undefined;bulkDraft='';revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); app.focus({preventScroll:true});window.scrollTo({top:0});
   if(previousSection!==section){
-    const tabs=['play','work','decks'];
+    const tabs=['play','work','link','decks'];
     animateNavigation(tabs.indexOf(section)>tabs.indexOf(previousSection)?'tab-right':'tab-left');
   }else if(previousRoute!==route)animateNavigation(['home','library','taboo-library'].includes(route)?'back':'forward');
 }
@@ -559,7 +564,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
     }
   }
 }
-app.addEventListener('submit',event=>{event.preventDefault();if(event.target instanceof HTMLFormElement) void submit(event.target).catch(error=>say(`Could not save: ${String(error)}`));});
+app.addEventListener('submit',event=>{if((event.target as HTMLElement).closest('.multiplayer'))return;event.preventDefault();if(event.target instanceof HTMLFormElement) void submit(event.target).catch(error=>say(`Could not save: ${String(error)}`));});
 app.addEventListener('input',event=>{if(event.target instanceof HTMLTextAreaElement&&['bulk-text','activity-bulk','taboo-bulk'].includes(event.target.id)){bulkDraft=event.target.value;pendingImport=undefined;document.querySelector('#import-review')?.remove();}if(event.target instanceof HTMLElement&&['activity-text','preview-card-text'].includes(event.target.id))updateActivityPreview();if(event.target instanceof HTMLInputElement&&event.target.id==='library-search'){libraryFilters[route==='taboo-library'?'taboo':'regular'].search=event.target.value;revealedDeck='';updateLibraryResults();}if(event.target instanceof HTMLInputElement&&event.target.id==='prompt-search'){promptSearch=event.target.value;const term=promptSearch.toLocaleLowerCase();app.querySelectorAll<HTMLElement>('[data-prompt-name]').forEach(el=>{el.hidden=!el.dataset.promptName!.includes(term);});}if(event.target instanceof HTMLInputElement&&event.target.dataset.tabooTeam!==undefined)tabooTeams[Number(event.target.dataset.tabooTeam)]=event.target.value;if(event.target instanceof HTMLInputElement && event.target.dataset.team!==undefined)draftTeams[Number(event.target.dataset.team)]=event.target.value;if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent=`${importLines(event.target.value).length} cards ready`;});
 app.addEventListener('change',event=>{
   if(event.target instanceof HTMLInputElement&&event.target.id==='skip-import-duplicates')skipImportDuplicates=event.target.checked;
@@ -612,6 +617,7 @@ app.addEventListener('pointerup',event=>{
 });
 app.addEventListener('pointercancel',()=>{deckSwipe=undefined;});
 document.addEventListener('click',event=>{
+  if((event.target as HTMLElement).closest('.multiplayer'))return;
   const el=(event.target as HTMLElement).closest<HTMLButtonElement>('button');if(!el)return;
   if(el.classList.contains('swipe-front')&&performance.now()<suppressDeckClickUntil){event.preventDefault();return;}
   if(el.dataset.revealKey){revealDeck(el.dataset.revealKey);el.closest('.swipe-deck')?.querySelector<HTMLButtonElement>('.swipe-delete')?.focus();return;}
