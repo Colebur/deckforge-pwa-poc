@@ -1,3 +1,5 @@
+import {loadPacks} from './game-pack-storage.js';
+import {mountPackEditor} from './game-pack-editor.js';
 import {FlashcardSession,type StudyDirection} from './flashcards.js';
 import {flashcardMarkup} from './flashcard-ui.js';
 import {mountAudience} from './tv-view.js';
@@ -25,7 +27,8 @@ const notice = document.querySelector<HTMLElement>('#notice')!;
 // Navigation decoration only: session updates and gameplay never start transitions.
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
 let navigationAnimation:Animation|undefined;
-reducedMotion.addEventListener('change',()=>navigationAnimation?.cancel());
+let flipAnimation:Animation|undefined;
+reducedMotion.addEventListener('change',()=>{navigationAnimation?.cancel();flipAnimation?.cancel();});
 function animateNavigation(kind:'forward'|'back'|'tab-left'|'tab-right'):void {
   navigationAnimation?.cancel();
   if(reducedMotion.matches||typeof app.animate!=='function')return;
@@ -57,6 +60,9 @@ let studyDirection:StudyDirection='front';
 let route = 'home';
 let section:'play'|'work'|'link'|'decks'='play';
 let stopMultiplayer:(()=>void)|undefined;
+let stopPacks:(()=>void)|undefined;
+let packGeneration=0;
+let flipping=false;
 let stopAudience:(()=>void)|undefined;
 const tvCode=new URL(location.href).searchParams.get('tv'),tvSecret=new URLSearchParams(location.hash.slice(1)).get('display');
 if(new URL(location.href).searchParams.has('room')){section='link';route='link';}
@@ -155,6 +161,7 @@ function render(): void {
   if(tvCode&&tvSecret){if(!stopAudience){document.querySelector<HTMLElement>('header')!.hidden=true;document.querySelector<HTMLElement>('#main-tabs')!.hidden=true;document.querySelector<HTMLElement>('footer')!.hidden=true;stopAudience=mountAudience(app,tvCode,tvSecret);}return;}
   navigationAnimation?.cancel();
   if(route!=='link'){stopMultiplayer?.();stopMultiplayer=undefined;}
+  if(route!=='game-decks'){stopPacks?.();stopPacks=undefined;packGeneration++;}
   const active=document.activeElement instanceof HTMLElement && app.contains(document.activeElement)?document.activeElement:undefined;
   const focusId=active?.id;
   const focusAction=active?.dataset.action;
@@ -170,15 +177,16 @@ function render(): void {
   tabs.innerHTML=[['play','▶','Play'],['work','▦','Work'],['link','⇄','Link'],['decks','▱','Decks']].map(([id,icon,title])=>`<button data-tab="${id}" ${section===id?'aria-current="page"':''}><span aria-hidden="true">${icon}</span>${title}</button>`).join('');
   document.body.classList.toggle('lookup-screen',route==='lookup'&&availableDecks().visible.length>0);
   document.querySelector<HTMLButtonElement>('#rename-button')!.hidden=!['editor','taboo-editor'].includes(route)||!!loadFailure;
-  document.querySelector<HTMLElement>('#page-title')!.textContent=({link:'Link',home:section==='work'?'Work':'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Jenga',flashcards:'Flashcards',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
-  document.querySelector<HTMLButtonElement>('#home-button')!.hidden=route==='home'||route==='link';
+  document.querySelector<HTMLElement>('#page-title')!.textContent=({'game-decks':'Game Decks',link:'Link',home:section==='work'?'Work':'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Jenga',flashcards:'Flashcards',prompts:'Prompt Picker',catchphrase:'Catchphrase',headbands:'Headbands',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
+  document.querySelector<HTMLButtonElement>('#home-button')!.hidden=['home','link','library'].includes(route);
   const back=document.querySelector<HTMLButtonElement>('#home-button')!;
   back.dataset.action=route==='editor'?'back':route==='taboo-editor'?'taboo-library':'home';
   back.setAttribute('aria-label',route==='editor'?'Back to Deck Library':route==='taboo-editor'?'Back to Taboo Decks':`Back to ${section==='play'?'Play':section==='work'?'Work':'Decks'}`);
   document.querySelector<HTMLButtonElement>('#settings-button')!.hidden=route==='settings' || !!loadFailure;
   document.querySelector<HTMLElement>('footer')!.hidden=!['settings','lab'].includes(route);
   if(loadFailure && route!=='backups') { renderStorageError(); return; }
-  if(route==='link'){if(!stopMultiplayer){app.innerHTML='<div id=multiplayer class=multiplayer><p id=room-status class=muted role=status aria-live=polite></p><div id=room-content></div></div>';stopMultiplayer=mountMultiplayer(app.querySelector('#room-content')!,app.querySelector('#room-status')!,library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)).map(d=>({id:d.id,name:d.name,items:d.cards.map(c=>c.text)})),library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)));}}
+  if(route==='link'){if(!stopMultiplayer){app.innerHTML='<div id=multiplayer class=multiplayer><p id=room-status class=muted role=status aria-live=polite></p><div id=room-content></div></div>';stopMultiplayer=mountMultiplayer(app.querySelector('#room-content')!,app.querySelector('#room-status')!,library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)).map(d=>({id:d.id,name:d.name,items:d.cards.map(c=>c.text)})),library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)),()=>navigate('game-decks'));}}
+  else if(route==='game-decks'){if(!stopPacks){const generation=++packGeneration;app.innerHTML='<div class=multiplayer><div id=pack-content><p class=muted>Loading Game Decks…</p></div></div>';stopPacks=()=>{};void loadPacks().then(packs=>{if(route!=='game-decks'||generation!==packGeneration)return;stopPacks=mountPackEditor(app.querySelector('#pack-content')!,notice,packs,()=>navigate('library'),'Back to Deck Library');}).catch(error=>{if(route==='game-decks'&&generation===packGeneration)say(String(error));});}}
   else if(route==='home') renderHome();
   else if(route==='library') renderLibrary();
   else if(route==='editor') renderEditor();
@@ -232,7 +240,7 @@ function updateLibraryResults():void {
 function renderLibrary(): void {
   app.innerHTML=`${backupReminder()}<div class="toolbar"><span class="muted">${library.decks.length} decks</span>${button('new-deck','＋ New Deck','primary')}</div>
     ${entry==='new-deck'?`<form id="new-deck" class="panel"><h2>New Deck</h2><label for="deck-name">Deck name</label><input id="deck-name" name="name" required maxlength="120" placeholder="Celebrities"><div class="form-actions"><button class="primary">Create Deck</button>${button('cancel-edit','Cancel')}</div></form>`:''}
-    ${libraryTools('regular')}<section id="library-results" class="list-panel" aria-label="Regular decks"></section><p class="section-label">MORE DECK TOOLS</p><section class="list-panel">${destination('taboo-library','Taboo Decks','Cards with five forbidden words.','◇')}${destination('backups','Backups','Export or restore your local library.','↥')}</section>`;
+    ${libraryTools('regular')}<section id="library-results" class="list-panel" aria-label="Regular decks"></section><p class="section-label">MORE DECK TOOLS</p><section class="list-panel">${destination('taboo-library','Taboo Decks','Cards with five forbidden words.','◇')}${destination('game-decks','Game Decks','Trivia, Team Trivia, Clue Board and Survey decks.','▤')}${destination('backups','Backups','Export or restore your local library.','↥')}</section>`;
   updateLibraryResults();
 }
 function editorTabs():string {
@@ -260,8 +268,8 @@ function renderEditor(): void {
   if(entry==='bulk') form=`<form id="bulk-form" class="panel"><h2>Bulk Paste</h2><p class="muted">One card per line. Simple numbered and bulleted prefixes are removed.</p><label for="bulk-text">Your list</label><textarea id="bulk-text" name="text" placeholder="1. Beyoncé&#10;2. Taylor Swift&#10;• Keanu Reeves">${esc(bulkDraft)}</textarea><p id="bulk-count" class="muted">${importLines(bulkDraft).length} cards ready</p><div class="form-actions"><button class="primary">Review Import</button>${button('cancel-edit','Cancel')}</div></form>`;
   app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards</span>${button('back','All Decks')}</div>${editorTabs()}${organization(d,'regular')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Bulk Paste')}</div>
     ${form}${importPreview()}<p class="section-label">CARDS IN ORDER</p><section class="list-panel">${d.cards.slice(expandedCards?0:cardPage*50,expandedCards?undefined:cardPage*50+50).map((c,i)=>`<div class="card-row ordered-row"><button class="ordered-edit" data-edit="${esc(c.id)}"><span class="number">${(expandedCards?0:cardPage*50)+i+1}</span><span class="card-text">${esc(c.text)}${d.compatibleModes.includes('flashcards')?`<small class="muted study-back-preview">${esc(c.back||'No back added')}</small>`:''}</span></button>${reorderControls('card',c.id,(expandedCards?0:cardPage*50)+i,d.cards.length)}</div>`).join('') || '<p class="empty">No cards yet.</p>'}</section>
-    ${pagination(d.cards.length)}${duplicateReport(d.cards)}
-    <details class="panel"><summary>Deck options</summary><div class="option-list">${button('duplicate-deck','Duplicate Deck')}${button('rename-deck','Rename Deck')}${button('backup-deck','Back Up This Deck')}${button('delete-deck','Delete Deck','danger')}</div></details>`;
+    ${pagination(d.cards.length)}
+    <details class="panel"><summary>Deck options</summary>${duplicateReport(d.cards)}<div class="option-list">${button('duplicate-deck','Duplicate Deck')}${button('rename-deck','Rename Deck')}${button('backup-deck','Back Up This Deck')}${button('delete-deck','Delete Deck','danger')}</div></details>`;
 }
 function resetLookup():void {
   lookupIndex=null;activityMode='none';fixedActivityId='';lookupActivity=undefined;
@@ -345,7 +353,7 @@ function renderTabooEditor():void{
   if(entry==='rename')form=`<form id="taboo-rename-form" class="panel"><label for="taboo-name">Deck name</label><input id="taboo-name" name="name" value="${esc(d.name)}" required maxlength="120"><div class="form-actions"><button class="primary">Save Name</button>${button('cancel-edit','Cancel')}</div></form>`;
   if(entry==='card')form=`<form id="taboo-card-form" class="panel"><h2>${c?'Edit':'Add'} Taboo Card</h2><label for="taboo-answer">Answer</label><input id="taboo-answer" name="text" value="${esc(c?.text??'')}" required>${Array.from({length:5},(_,i)=>`<label for="forbidden-${i}">Forbidden word ${i+1}</label><input id="forbidden-${i}" name="forbidden-${i}" value="${esc(c?.forbidden[i]??'')}" required>`).join('')}<div class="form-actions"><button class="primary">Save Card</button>${button('cancel-edit','Cancel')}${c?button('taboo-delete-card','Delete','danger'):''}</div></form>`;
   if(entry==='bulk')form=`<form id="taboo-bulk-form" class="panel"><h2>Paste Taboo Cards</h2><p class="muted">One card per line. Separate the answer and five forbidden words with |.</p><label for="taboo-bulk">Cards</label><textarea id="taboo-bulk" name="text" required placeholder="Astronaut | Space | NASA | Rocket | Moon | Helmet">${esc(bulkDraft)}</textarea><p class="muted">Every line is checked before any cards are saved.</p><div class="form-actions"><button class="primary">Review Import</button>${button('cancel-edit','Cancel')}</div></form>`;
-  app.innerHTML=`<div class="toolbar">${button('taboo-library','‹ Taboo Decks')}<span class="muted">${d.cards.length} cards</span></div>${organization(d,'taboo')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Paste a List')}</div>${form}${importPreview()}<section class="list-panel">${d.cards.slice(expandedCards?0:cardPage*50,expandedCards?undefined:cardPage*50+50).map(c=>`<button class="menu-row" data-taboo-edit="${esc(c.id)}"><span><strong>${esc(c.text)}</strong><small>${c.forbidden.map(esc).join(' · ')}</small></span><span class="arrow">›</span></button>`).join('')||'<p class="empty">Add an answer and five forbidden words.</p>'}</section>${pagination(d.cards.length)}${duplicateReport(d.cards)}<details class="panel"><summary>Deck options</summary><div class="option-list">${button('duplicate-deck','Duplicate Deck')}${button('rename-deck','Rename Deck')}${button('taboo-backup','Back Up This Deck')}${button('taboo-delete','Delete Deck','danger')}</div></details>`;
+  app.innerHTML=`<div class="toolbar">${button('taboo-library','‹ Taboo Decks')}<span class="muted">${d.cards.length} cards</span></div>${organization(d,'taboo')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Paste a List')}</div>${form}${importPreview()}<section class="list-panel">${d.cards.slice(expandedCards?0:cardPage*50,expandedCards?undefined:cardPage*50+50).map(c=>`<button class="menu-row" data-taboo-edit="${esc(c.id)}"><span><strong>${esc(c.text)}</strong><small>${c.forbidden.map(esc).join(' · ')}</small></span><span class="arrow">›</span></button>`).join('')||'<p class="empty">Add an answer and five forbidden words.</p>'}</section>${pagination(d.cards.length)}<details class="panel"><summary>Deck options</summary>${duplicateReport(d.cards)}<div class="option-list">${button('duplicate-deck','Duplicate Deck')}${button('rename-deck','Rename Deck')}${button('taboo-backup','Back Up This Deck')}${button('taboo-delete','Delete Deck','danger')}</div></details>`;
 }
 function renderTaboo():void{
   const pool=modeDecks(library.tabooDecks??[],'taboo',launchContext,showAllDecks),playable=pool.visible;
@@ -374,7 +382,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.17.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.18.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
@@ -403,9 +411,9 @@ function navigate(target: string,nextSection?:typeof section): void {
   const previousSection=section,previousRoute=route;
   if((calibrating || (round && round.phase!=='ended')) && !confirm('Leave and end the current round?')) return;
   if(nextSection)section=nextSection;
-  if(['library','editor','taboo-library','taboo-editor'].includes(target))section='decks';
+  if(['library','editor','taboo-library','taboo-editor','game-decks'].includes(target))section='decks';
   if(MODES.some(m=>m.id===target)){launchContext=(target==='lookup'||target==='prompts'||section==='work')?'work':'play';section=launchContext;showAllDecks=false;selected='';tabooSelected='';promptIds=undefined;promptSearch='';promptActivityMode='none';promptFixed={};promptSession=undefined;}
-  gameGeneration++;calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
+  gameGeneration++;flipAnimation?.cancel();calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
   study=undefined;presenting=false;presentationControls=true;expandedCards=false;pendingImport=undefined;bulkDraft='';revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); app.focus({preventScroll:true});window.scrollTo({top:0});
   if(previousSection!==section){
     const tabs=['play','work','link','decks'];
@@ -433,6 +441,7 @@ async function storageProtection(request: boolean): Promise<void> {
   if(route==='settings' || route==='lab') render();
 }
 async function action(name: string): Promise<void> {
+  if(flipping&&name.startsWith('study-'))return;
   const d=deck();
   if(name.startsWith('award-')){const index=name==='award-none'?null:Number(name.slice(6));if(match?.award(index))render();return;}
   switch(name) {
@@ -440,7 +449,15 @@ async function action(name: string): Promise<void> {
     case 'study-setup':study=undefined;say('');render();break;
     case 'study-prev':case 'study-next':if(study){study.move(name==='study-next'?1:-1);say('');render();}break;
     case 'study-shuffle':if(study){study.shuffle();render();say('Study order shuffled. Your deck order is unchanged.');}break;
-    case 'study-flip':if(study){study.flip();render();if(!reducedMotion.matches)app.querySelector('.study-card')?.animate([{opacity:.6,transform:'rotateY(-8deg)'},{opacity:1,transform:'rotateY(0deg)'}],{duration:180,easing:'ease-out'});}break;
+    case 'study-flip':if(study&&!flipping){
+      const session=study,generation=gameGeneration,card=app.querySelector<HTMLElement>('.study-card');flipping=true;
+      try{
+        if(!reducedMotion.matches&&card?.animate){flipAnimation=card.animate([{transform:'perspective(1000px) rotateY(0deg)'},{transform:'perspective(1000px) rotateY(90deg)'}],{duration:150,easing:'ease-in',fill:'forwards'});await flipAnimation.finished.catch(()=>{});}
+        if(study!==session||generation!==gameGeneration||route!=='flashcards')break;
+        session.flip();render();const face=app.querySelector<HTMLElement>('.study-card');
+        if(!reducedMotion.matches&&face?.animate){flipAnimation=face.animate([{transform:'perspective(1000px) rotateY(-90deg)'},{transform:'perspective(1000px) rotateY(0deg)'}],{duration:190,easing:'ease-out'});await flipAnimation.finished.catch(()=>{});}
+      }finally{flipAnimation=undefined;flipping=false;}
+    }break;
     case 'expand-cards':expandedCards=!expandedCards;cardPage=0;render();break;
     case 'presentation':presenting=!presenting;presentationControls=true;render();if(!presenting&&document.fullscreenElement)void document.exitFullscreen().catch(()=>{});break;
     case 'tv-fullscreen':if(document.documentElement.requestFullscreen)void document.documentElement.requestFullscreen().catch(()=>say('Use landscape and your device’s screen-mirroring controls.'));else say('Use landscape and your device’s screen-mirroring controls.');break;
@@ -506,7 +523,7 @@ async function action(name: string): Promise<void> {
     case 'finish-game': navigate(sectionRoot(section));break;
     case 'forehead-ready':placement.confirmPlacement();say('Keep the phone steady at your forehead.');break;
     case 'use-buttons': if(!preparing){gameAudio.stopCountdown();placement.reset();useTilt=false;calibrating=false;sensors.stop();tilt.reset();beginHeadbands();}break;
-    case 'cancel-headbands': placement.reset();gameGeneration++;calibrating=false;preparing=false;sensors.stop();tilt.reset();gameAudio.stop();releaseWake();render();break;
+    case 'cancel-headbands': placement.reset();gameGeneration++;flipAnimation?.cancel();calibrating=false;preparing=false;sensors.stop();tilt.reset();gameAudio.stop();releaseWake();render();break;
     case 'reload': location.reload(); break;
     case 'check-update': {
       if(!('serviceWorker' in navigator)) throw new Error('Updates need a secure browser connection.');
