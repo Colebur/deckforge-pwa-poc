@@ -4,7 +4,7 @@ Link now supports Categories, Trivia, Team Trivia, Clue Board, Survey Showdown a
 
 ## Create content
 
-Open Link → Game Decks. These are a separate local library, keeping regular decks and Activities unchanged. Export Game Decks separately for backup; the regular library export does not include them. Imports validate the entire file and add independent copies. Up to 200 decks with 500 cards each are supported; a room takes at most 25 cards. Only the selected room content is uploaded, and disappears with room expiry/deletion.
+Open Decks → Game Decks. These are a separate local library, keeping regular decks and Activities unchanged. Back Up Everything includes Game Decks; a Game Decks-only export is also available. Imports validate the entire file and add independent copies. Up to 200 decks with 500 cards each are supported; a room takes at most 25 cards. Only the selected room content is uploaded, and disappears with room expiry/deletion.
 
 Trivia/Team Trivia/Clue Board use quiz decks, one card per line:
 
@@ -44,7 +44,7 @@ Session totals persist while the room is active. Rooms expire after 15 minutes w
 ## iPhone checks
 
 1. After the release, Settings → Check for Update; close every window of the PWA and reopen. Confirm version 0.14.0.
-2. Open Link → Game Decks; create the sample quiz and survey above. Close/reopen and verify they persist. Export their separate backup.
+2. Open Decks → Game Decks; create the sample quiz and survey above. Close/reopen and verify they persist. Export Back Up Everything or the Game Decks-only backup.
 3. Create Trivia with host participation on. Join from another device. Submit an accepted alternative, reveal, change a disputed answer's points, finalize, and continue. Verify keys/opponent answers were hidden before reveal.
 4. Repeat with host participation off and spoken input. Verify the host has no score and can judge aloud.
 5. In Team Trivia, assign teams and test a third teammate: captain submits, teammate can read but cannot overwrite.
@@ -55,3 +55,5 @@ Session totals persist while the room is active. Rooms expire after 15 minutes w
 10. Test Categories and existing one-device modes again. Offline, confirm local editors and one-device games work; Link should report the lost connection.
 
 Core rules/content validation are platform-independent TypeScript. The room transport and separate IndexedDB adapter remain small replaceable modules. No Capacitor, authentication, analytics or new hosting service was introduced.
+
+See [complete backups and labeled editing](COMPLETE_BACKUPS.md) for the newer editing flow and restore behavior.

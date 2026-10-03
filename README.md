@@ -113,3 +113,7 @@ For local multiplayer testing, run the separate DeckForge-Vote-Test preview on p
 Link also includes Trivia, Team Trivia, Clue Board, Survey Showdown and Word Wheel. See [Link game guide](LINK_GAMES.md) for Game Deck formats, host participation, first-edition rules, backups and device tests.
 
 [Party games release verification](RELEASE_VERIFICATION.md) records automated checks, local and hosted browser trials, and remaining physical-device tests.
+
+## Complete backups and Game Deck editing
+
+In version 0.19.0, Backups → Back Up Everything includes regular/Taboo decks, backs, Activities, Game Decks and saved settings. Older collection files remain readable. Game Decks now have labeled card fields as well as bulk editing. See [complete backup and editing guide](COMPLETE_BACKUPS.md) for exact steps and limits.
