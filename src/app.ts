@@ -1,3 +1,6 @@
+import {exportComplete,parseComplete,restoreComplete,type CompleteData,type CompletePreview} from './complete-backup.js';
+import {snapshotComplete,saveComplete,recoverCompleteStartup} from './complete-storage.js';
+import {completeRecovery} from './storage.js';
 import {loadPacks} from './game-pack-storage.js';
 import {mountPackEditor} from './game-pack-editor.js';
 import {FlashcardSession,type StudyDirection} from './flashcards.js';
@@ -132,7 +135,10 @@ let storageMode = 'Checking protection…';
 let loopForRound = false;
 let showCountdown = false;
 let timerSound = true;
-let pendingBackup: BackupPreview | undefined;
+let pendingBackup: CompletePreview | undefined;
+let backupData:CompleteData|undefined;
+let completePoint:CompleteData|null=null;
+let backupError='';
 let showBackupText=false;
 let backupFilename = '';
 let restoreMode: 'add' | 'replace' = 'add';
@@ -371,18 +377,19 @@ function backupStatus():string {
   return `${metric('Last full-library export requested',date(preferences.lastExport))}${metric('Last backup you confirmed saving',date(preferences.lastConfirmedBackup))}<p class="muted">An export request doesn’t prove the file was saved. After saving the full library to Files or another safe location, confirm it here.</p>${button('confirm-backup','I Saved a Full-Library Backup')}<label class="check"><input id="backup-reminders" type="checkbox" ${preferences.backupReminders?'checked':''}> Remind me monthly in Decks</label><p class="muted">Local reminders only, shown while using the app. No notifications or uploads. Individual-deck exports do not reset this reminder.</p>`;
 }
 function renderBackups(): void {
-  const overlap=pendingBackup?backupOverlap(library,pendingBackup.library):0;
+  const overlap=pendingBackup?backupOverlap(library,pendingBackup.library)+(pendingBackup.packs??[]).filter(p=>backupData?.packs.some(existing=>existing.name.trim().toLocaleLowerCase()===p.name.trim().toLocaleLowerCase())).length:0;
   const incoming=pendingBackup?.library;
   app.innerHTML=`<p class="muted">Keep a backup in Files or iCloud Drive. Decks stay on this device; GitHub does not back them up.</p>
-    ${!loadFailure?`<section class="panel"><h2>Save a copy</h2><p>${collectionSummary(library)}</p>${button('backup','Export Backup','primary full')}${backupStatus()}<details ${showBackupText?'open':''}><summary>Copy backup text instead</summary>${button('backup-text','Show Backup Text')}${showBackupText?`<label for="backup-json">Backup JSON</label><textarea id="backup-json" readonly>${esc(exportBackup(library))}</textarea>${button('copy-backup','Copy Backup Text')}<p class="muted">Save this text in a file ending in .json. The file can be restored below.</p>`:''}</details></section>`:`<p class="error">${esc(loadFailure)}</p>`}
-    <section class="panel"><h2>Restore a backup</h2><p class="muted">Choose a DeckForge JSON backup. You’ll review it before anything changes.</p><label for="backup-file" class="file-label">Choose Backup File</label><input id="backup-file" type="file" accept=".json,application/json" ${futureData?'disabled':''}>
-      ${incoming?`<div class="restore-preview"><h3>Ready to import</h3><p>${esc(backupFilename)}<br>${collectionSummary(incoming)}<br><small>${esc(pendingBackup!.source)}</small></p><details><summary>Preview decks</summary><ul>${[...incoming.decks,...(incoming.tabooDecks??[]).map(d=>({...d,name:d.name+' (Taboo)'}))].map(d=>`<li>${esc(d.name)} · ${d.cards.length} cards · ${'activities' in d?d.activities.length+' activities · ':''}${esc(d.deckContext)} · ${esc(d.compatibleModes.map(id=>MODES.find(m=>m.id===id)?.title??id).join(', ')||'No assigned modes')}</li>`).join('')}</ul></details>${overlap?`<p class="muted">${overlap} incoming deck names already exist. Add copies keeps both; names are never used to overwrite decks.</p>`:''}<label for="restore-mode">Import as</label><select id="restore-mode"><option value="add" ${restoreMode==='add'?'selected':''}>Add copies — keep existing decks</option><option value="replace" ${restoreMode==='replace'?'selected':''}>Replace library — save a restore point first</option></select><p class="muted">${restoreMode==='add'?'Your existing decks and timer settings stay as they are.':'Your current decks will be replaced. A local restore point lets you undo this; export a file for a separate backup.'}</p>${restoreMode==='replace'?`<p>Current library: ${collectionSummary(library)}</p><label class="check"><input id="acknowledge-replace" type="checkbox" ${replaceAcknowledged?'checked':''}> I understand this replaces my current library and saved game settings.</label>`:''}<div class="form-actions"><button type="button" data-action="restore-backup" class="primary" ${restoreMode==='replace'&&!replaceAcknowledged?'disabled':''}>${restoreMode==='add'?'Add Deck Copies':'Replace Library'}</button>${button('cancel-restore','Cancel')}</div></div>`:''}</section>
-    ${restorePoint && !futureData?`<details class="panel"><summary>Local recovery</summary><p>Recover ${restorePoint.library.decks.length} regular and ${restorePoint.library.tabooDecks?.length??0} Taboo decks${restorePoint.savedAt?` from ${esc(new Date(restorePoint.savedAt).toLocaleString())}`:' from the previous save'}. A local copy cannot protect against clearing all app data.</p>${button('recover','Review Restore Point')}</details>`:''}`;
+    ${!loadFailure?`<section class="panel"><h2>Save a copy</h2><p>${collectionSummary(library)}</p>${backupData?`<p>${backupData.packs.length} Game Decks · saved settings included</p>${button('backup','Back Up Everything','primary full')}`:`<p class=error>${esc(backupError||'Open Backups again to load the complete library.')}</p>`}${backupStatus()}<details ${showBackupText?'open':''}><summary>Copy backup text instead</summary>${button('backup-text','Show Backup Text')}${showBackupText?`<label for="backup-json">Backup JSON</label><textarea id="backup-json" readonly>${esc(backupData?exportComplete(backupData):'')}</textarea>${button('copy-backup','Copy Backup Text')}<p class="muted">Save this text in a file ending in .json. The file can be restored below.</p>`:''}</details></section>`:`<p class="error">${esc(loadFailure)}</p>`}
+    <section class="panel"><h2>Restore a backup</h2><p class="muted">Choose a DeckForge JSON backup. You’ll review it before anything changes. Close other DeckForge windows before importing to avoid concurrent edits.</p><label for="backup-file" class="file-label">Choose Backup File</label><input id="backup-file" type="file" accept=".json,application/json" ${futureData?'disabled':''}>
+      ${incoming?`<div class="restore-preview"><h3>Ready to import</h3><p>${esc(backupFilename)}<br>${collectionSummary(incoming)}<br>${pendingBackup!.packs!==undefined?pendingBackup!.packs.length+' Game Decks<br>':''}${pendingBackup!.preferences?`Saved settings included · ${pendingBackup!.preferences.largeText?'larger':'standard'} text · backup reminders ${pendingBackup!.preferences.backupReminders?'on':'off'}<br>Catchphrase timer: ${incoming.duration===0?'Random':incoming.duration+' seconds'} · teams: ${esc((incoming.teams??[]).join(', ')||'default')}<br>`:''}<small>${esc(pendingBackup!.source)}</small></p><details><summary>Preview decks</summary><ul>${[...incoming.decks,...(incoming.tabooDecks??[]).map(d=>({...d,name:d.name+' (Taboo)'}))].map(d=>`<li>${esc(d.name)} · ${d.cards.length} cards · ${'activities' in d?d.activities.length+' activities · ':''}${esc(d.deckContext)} · ${esc(d.compatibleModes.map(id=>MODES.find(m=>m.id===id)?.title??id).join(', ')||'No assigned modes')}</li>`).join('')}${(pendingBackup!.packs??[]).map(p=>`<li>${esc(p.name)} (Game Deck) · ${p.cards.length} cards · ${p.kind==='quiz'?'Trivia':'Survey'}</li>`).join('')}</ul></details>${overlap?`<p class="muted">${overlap} incoming deck names already exist. Add copies keeps both; names are never used to overwrite decks.</p>`:''}<label for="restore-mode">Import as</label><select id="restore-mode"><option value="add" ${restoreMode==='add'?'selected':''}>Add copies — keep existing decks</option><option value="replace" ${restoreMode==='replace'?'selected':''}>Replace included content — save a restore point first</option></select><p class="muted">${restoreMode==='add'?'Existing decks and settings stay as they are. Independent copies of every included deck will be added.':'Only collections included in this file will be replaced. Complete backups also restore saved settings. A local restore point lets you undo this; export a file for a separate backup.'}</p>${restoreMode==='replace'?`<p>Current library: ${collectionSummary(library)}</p><label class="check"><input id="acknowledge-replace" type="checkbox" ${replaceAcknowledged?'checked':''}> I understand this replaces my current library and saved game settings.</label>`:''}<div class="form-actions"><button type="button" data-action="restore-backup" class="primary" ${restoreMode==='replace'&&!replaceAcknowledged?'disabled':''}>${restoreMode==='add'?'Add Deck Copies':'Replace Library'}</button>${button('cancel-restore','Cancel')}</div></div>`:''}</section>
+    ${completePoint&&!futureData?`<details class=panel><summary>Complete local recovery</summary><p>${collectionSummary(completePoint.library)}<br>${completePoint.packs.length} Game Decks · saved settings. This is the snapshot before your last import; it does not protect against clearing app data.</p>${button('recover-complete','Review Complete Restore Point')}</details>`:''}
+    ${restorePoint && !futureData?`<details class="panel"><summary>Regular / Taboo recovery</summary><p>Recover ${restorePoint.library.decks.length} regular and ${restorePoint.library.tabooDecks?.length??0} Taboo decks${restorePoint.savedAt?` from ${esc(new Date(restorePoint.savedAt).toLocaleString())}`:' from the previous save'}. A local copy cannot protect against clearing all app data.</p>${button('recover','Review Restore Point')}</details>`:''}`;
 }
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.18.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.19.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
@@ -484,7 +491,7 @@ async function action(name: string): Promise<void> {
     case 'quick-rename':if(route==='editor'){editorSection='cards';openEntry('rename');document.querySelector('#rename')?.scrollIntoView({block:'start'});}else if(route==='taboo-editor'){openEntry('rename');document.querySelector('#taboo-rename-form')?.scrollIntoView({block:'start'});}break;
     case 'home': navigate(sectionRoot(section)); break;
     case 'settings': navigate('settings'); break;
-    case 'backups': restorePoint=await recovery(); navigate('backups'); break;
+    case 'backups': restorePoint=await recovery();backupError='';try{backupData=await snapshotComplete();completePoint=await completeRecovery();}catch(error){backupData=undefined;backupError=String(error);}navigate('backups');break;
     case 'back': navigate('library'); break;
     case 'decks-tab':navigate('library','decks');break;
     case 'toggle-all-decks':showAllDecks=!showAllDecks;render();break;
@@ -538,20 +545,22 @@ async function action(name: string): Promise<void> {
     }
     case 'save-probe': await mutate(next=>{next.probe=`Saved ${new Date().toLocaleString()} · ${uid().slice(0,8)}`;}); say('Marker saved. Close and reopen to check it.'); break;
     case 'storage': await storageProtection(true); break;
-    case 'backup': await downloadBackup(library,true); break;
+    case 'backup':{const value=await snapshotComplete();const result=await webShare.saveFile(exportComplete(value),`DeckForge-complete-${new Date().toISOString().slice(0,10)}.json`);if(result!=='canceled'){await setPreferences(next=>{next.lastExport=new Date().toISOString();});say('Complete backup requested. Save it to Files, then confirm saving it here.');}break;}
     case 'confirm-backup':await setPreferences(next=>{next.lastConfirmedBackup=new Date().toISOString();next.snoozedUntil=null;});say('Backup confirmation saved on this device.');break;
     case 'snooze-backup':await setPreferences(next=>{next.snoozedUntil=new Date(Date.now()+7*24*60*60*1000).toISOString();});break;
     case 'clear-library-filters':{const kind=route==='taboo-library'?'taboo':'regular';libraryFilters[kind]={search:'',context:'all',mode:'all'};revealedDeck='';render();break;}
-    case 'backup-text': showBackupText=true;render();break;
+    case 'backup-text':backupData=await snapshotComplete();showBackupText=true;render();break;
     case 'copy-backup': await webShare.copyText(document.querySelector<HTMLTextAreaElement>('#backup-json')!.value);say('Backup text copied. Save it as a .json file.');break;
     case 'backup-deck': if(d) await downloadBackup({...library,decks:[d],tabooDecks:[]}); break;
     case 'cancel-restore': pendingBackup=undefined;backupFilename='';render();break;
     case 'restore-backup': if(pendingBackup) {
+      await recoverCompleteStartup();
       if(restoreMode==='replace'&&!replaceAcknowledged)throw new Error('Acknowledge replacement before continuing.');
-      const restored=restoreBackup(library,pendingBackup.library,restoreMode);
-      await mutate(next=>{for(const key of Object.keys(next))delete (next as unknown as Record<string,unknown>)[key];Object.assign(next,restored);},restoreMode==='replace');
+      if(loadFailure&&pendingBackup.packs===undefined){const restored=restoreBackup(library,pendingBackup.library,restoreMode);await save(restored,true);library=restored;}
+      else {if(saving)throw new Error('A save is in progress.');saving=true;try{const before=await snapshotComplete(),after=restoreComplete(before,pendingBackup,restoreMode);await saveComplete(before,after);library=after.library;preferences=after.preferences;completePoint=await completeRecovery();}finally{saving=false;}}
       tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;loadFailure='';restorePoint=await recovery();pendingBackup=undefined;entry='';selected='';lookupIndex=null;route='library';render();say('Backup restored and saved.');
     } break;
+    case 'recover-complete':if(completePoint){pendingBackup={...completePoint,source:'Complete local restore point'};backupFilename='Complete local restore point';restoreMode='replace';replaceAcknowledged=false;render();say('Review all collections and settings before recovery.');}break;
     case 'recover': if(restorePoint) { pendingBackup={library:restorePoint.library,source:'DeckForge PWA'};backupFilename='Local restore point';restoreMode='replace';replaceAcknowledged=false;render();say('Review this recovery copy before replacing the library.'); } break;
     case 'sensors': await sensors.start(); updateLab(); break;
     case 'stop-sensors': sensors.stop(); updateLab(); break;
@@ -633,7 +642,7 @@ app.addEventListener('change',event=>{
     const file=el.files?.[0];if(!file)return;pendingBackup=undefined;
     void (async()=>{
       if(file.size>MAX_BACKUP_BYTES)throw new Error('Choose a backup smaller than 20 MB.');
-      const preview=parseBackup(await file.text());pendingBackup=preview;backupFilename=file.name;restoreMode='add';replaceAcknowledged=false;render();say('Backup checked. Review it before importing.');
+      const preview=parseComplete(await file.text());pendingBackup=preview;backupFilename=file.name;restoreMode='add';replaceAcknowledged=false;render();say('Backup checked. Review it before importing.');
     })().catch(error=>{render();say(String(error));});
   }
 });
@@ -781,5 +790,5 @@ async function setupOffline(): Promise<void> {
     registration.addEventListener('updatefound',()=>{const installing=registration.installing;installing?.addEventListener('statechange',ready);});
   } catch(error) {offline='Offline setup failed · reopen online';mark();say(`Offline setup: ${String(error)}`);}
 }
-try {try{preferences=await loadPreferences();}catch{/* Preferences must never block deck recovery. */}library=await load();tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;restorePoint=await recovery();render();void storageProtection(true);void setupOffline();}
+try {await recoverCompleteStartup();try{preferences=await loadPreferences();}catch{/* Preferences must never block deck recovery. */}library=await load();tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;restorePoint=await recovery();render();void storageProtection(true);void setupOffline();}
 catch(error) {library=emptyLibrary();loadFailure=String(error);futureData=error instanceof NewerFormatError;try{restorePoint=await recovery();}catch{}render();void setupOffline();}
