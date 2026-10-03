@@ -81,3 +81,17 @@ export async function savePreferences(preferences:Preferences):Promise<void>{
     tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error('Preference save canceled.'));
   });
 }
+
+// Complete restore journal and checkpoint share the existing state store.
+// No database upgrade or relocation of the Game Deck collection is needed.
+import {validateComplete,type CompleteData} from './complete-backup.js';
+export async function completeRecovery():Promise<CompleteData|null>{const v=await read('complete-restore-point');return v===undefined?null:validateComplete(v);}
+export async function pendingComplete():Promise<CompleteData|null>{const v=await read('pending-complete-restore');return v===undefined?null:validateComplete(v);}
+export async function beginComplete(before:CompleteData):Promise<void>{
+ const value=validateComplete(before),db=await open();
+ return new Promise((resolve,reject)=>{const tx=db.transaction('state','readwrite'),store=tx.objectStore('state');store.put(value,'pending-complete-restore');store.put(value,'complete-restore-point');tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error('Recovery checkpoint failed.'));});
+}
+export async function finishComplete(value:CompleteData):Promise<void>{
+ const valid=validateComplete(value),db=await open();
+ return new Promise((resolve,reject)=>{const tx=db.transaction('state','readwrite'),store=tx.objectStore('state');store.put(encodeState(valid.library),'library');store.put(valid.preferences,'preferences');store.delete('pending-complete-restore');tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error('Restore save canceled.'));});
+}
