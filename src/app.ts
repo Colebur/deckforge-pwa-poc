@@ -1,3 +1,5 @@
+import {prepareCardImport,mappedCards,MAX_IMPORT_BYTES,type CardImportFormat,type CardImportTable,type ColumnMapping} from './card-import.js';
+import {reviewCardItems} from './editor-tools.js';
 import {mobilePlatform,shouldOfferSafety,mountSafetyTutorial} from './device-safety.js';
 import {refreshViewport} from './viewport.js';
 import {loadSafetySeen,saveSafetySeen} from './storage.js';
@@ -111,6 +113,21 @@ let roundLength = 90000;
 let cardPage = 0;
 let expandedCards=false;
 let bulkDraft='';
+let bulkFormat:CardImportFormat='paste';
+let bulkFilename='';
+let bulkTable:CardImportTable|undefined;
+let bulkMapping:ColumnMapping|undefined;
+let bulkReadGeneration=0;
+function resetBulkSource():void {bulkReadGeneration++;bulkFormat='paste';bulkFilename='';bulkTable=undefined;bulkMapping=undefined;}
+function reviewCards():void {
+  const d=deck();if(!d)return;bulkTable=prepareCardImport(bulkDraft,bulkFormat);
+  bulkMapping??={...bulkTable.mapping};pendingImport=reviewCardItems(d.id,mappedCards(bulkTable,bulkMapping),d.cards);
+}
+function csvMapping():string {
+  if(bulkFormat!=='csv'||!bulkTable||!bulkMapping)return '';
+  const opts=(selected:number|null)=>Array.from({length:bulkTable!.columns},(_,i)=>`<option value="${i}" ${selected===i?'selected':''}>Column ${i+1}${bulkTable!.rows[0]?.[i]?' · '+esc(bulkTable!.rows[0][i].slice(0,50)):''}</option>`).join('');
+  return `<fieldset id="csv-columns"><legend>CSV columns</legend><label class="check"><input id="csv-header" type="checkbox" ${bulkMapping.header?'checked':''}> First row is a header</label><label for="csv-front">Front column</label><select id="csv-front">${opts(bulkMapping.front)}</select><label for="csv-back">Back column</label><select id="csv-back"><option value="none" ${bulkMapping.back===null?'selected':''}>None · one-sided cards</option>${opts(bulkMapping.back)}</select><p class="muted">Only the selected columns will be imported.</p></fieldset>`;
+}
 let pendingImport:ImportReview|undefined;
 let skipImportDuplicates=false;
 let presenting=false;
@@ -126,7 +143,8 @@ function duplicateReport(cards:Deck['cards']):string {
 }
 function importPreview():string {
   if(!pendingImport)return '';
-  return `<section id="import-review" class="panel"><h3>Review Import</h3><p>${pendingImport.items.length} cleaned lines · ${pendingImport.duplicates} duplicates (existing or repeated lines).</p><label class="check"><input id="skip-import-duplicates" type="checkbox" ${skipImportDuplicates?'checked':''}> Skip duplicates</label><p class="muted">Duplicates are kept unless you choose to skip them. Review the cleaned text before saving.</p><ol class="import-preview">${pendingImport.items.map(c=>`<li>${esc(c.text)}${c.forbidden?`<small>${c.forbidden.map(esc).join(' · ')}</small>`:''}</li>`).join('')}</ol>${button('confirm-import','Confirm Import','primary full')}</section>`;
+  const regular=pendingImport.kind==='cards',two=pendingImport.items.filter(c=>c.back).length,problems=pendingImport.problems??[],samples=regular?pendingImport.items.slice(0,8):pendingImport.items;
+  return `<section id="import-review" class="panel"><h3>Review Import</h3><p>${pendingImport.items.length} ${regular?(pendingImport.items.length===1?'card detected':'cards detected'):'cleaned lines'}${regular?` · ${pendingImport.items.length-two} one-sided · ${two} two-sided`:''} · ${pendingImport.duplicates} duplicates.</p>${problems.length?`<div class="error" role="alert"><p>Fix these problems before importing:</p><ul>${problems.slice(0,10).map(p=>`<li>${esc(p)}</li>`).join('')}</ul>${problems.length>10?`<p>${problems.length-10} more problems.</p>`:''}</div>`:''}<label class="check"><input id="skip-import-duplicates" type="checkbox" ${skipImportDuplicates?'checked':''}> Skip duplicates</label><p class="muted">Duplicates are kept unless you choose to skip them.${regular?' Two-sided duplicates compare both Front and Back.':''}</p><ol class="import-preview">${samples.map(c=>`<li>${esc(c.text)}${c.back?`<small>Back: ${esc(c.back)}</small>`:''}${c.forbidden?`<small>${c.forbidden.map(esc).join(' · ')}</small>`:''}</li>`).join('')}</ol>${regular&&pendingImport.items.length>8?'<p class="muted">Showing the first 8 cards.</p>':''}<div class="form-actions"><button type="button" data-action="confirm-import" class="primary" ${problems.length||!pendingImport.items.length?'disabled':''}>${regular?'Import Cards':'Confirm Import'}</button>${button('cancel-edit','Cancel')}</div></section>`;
 }
 function presentationToggle():string {
   return presenting?`<div class="presentation-bar">${button('presentation-controls',presentationControls?'Hide Controls':'Show Controls','quiet')}${presentationControls?button('tv-fullscreen','Full Screen','quiet')+button('presentation','Exit TV View','quiet'):''}</div>`:button('presentation','TV View','quiet full');
@@ -281,8 +299,8 @@ function renderEditor(): void {
   let form='';
   if(entry==='rename') form=`<form id="rename" class="panel"><h2>Rename Deck</h2><label for="rename-name">Deck name</label><input id="rename-name" name="name" value="${esc(d.name)}" required maxlength="120"><div class="form-actions"><button class="primary">Save Name</button>${button('cancel-edit','Cancel')}</div></form>`;
   if(entry==='card') form=`<form id="card-form" class="panel"><h2>${editable?'Edit Card':'Add Card'}</h2><label for="card-text">${d.compatibleModes.includes('flashcards')?'Front · word, prompt or question':'Word or prompt'}</label><textarea id="card-text" name="text" required>${editable?esc(editable.text):''}</textarea><label for=card-back>Back · answer or definition (optional)</label><textarea id=card-back name=back>${esc(editable?.back??'')}</textarea><p class=muted>Other games use the front. Leave the back empty for a one-sided card.</p><div class="form-actions"><button class="primary">${editable?'Save Card':'Add Card'}</button>${button('cancel-edit','Cancel')}${editable?button('delete-card','Delete Card','danger'):''}</div></form>`;
-  if(entry==='bulk') form=`<form id="bulk-form" class="panel"><h2>Bulk Paste</h2><p class="muted">One card per line. Simple numbered and bulleted prefixes are removed.</p><label for="bulk-text">Your list</label><textarea id="bulk-text" name="text" placeholder="1. Beyoncé&#10;2. Taylor Swift&#10;• Keanu Reeves">${esc(bulkDraft)}</textarea><p id="bulk-count" class="muted">${importLines(bulkDraft).length} cards ready</p><div class="form-actions"><button class="primary">Review Import</button>${button('cancel-edit','Cancel')}</div></form>`;
-  app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards</span>${button('back','All Decks')}</div>${editorTabs()}${organization(d,'regular')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Bulk Paste')}</div>
+  if(entry==='bulk') form=`<form id="bulk-form" class="panel"><h2>Bulk Add</h2><p class="muted">Paste one card per line, or Front and Back separated by a tab. Simple numbered and bulleted prefixes are removed from plain text.</p><label for="card-import-file">Choose TXT or CSV File</label><input id="card-import-file" type="file" accept=".txt,.csv,text/plain,text/csv"><p class="muted">Files stay on this device. Nothing is uploaded.</p>${bulkFilename?`<p>${esc(bulkFilename)} · ${bulkFormat.toUpperCase()}</p>${button('use-paste','Use Pasted Text Instead','quiet')}`:''}<label for="bulk-text">${bulkFormat==='csv'?'CSV contents':'Your list'}</label><textarea id="bulk-text" name="text" placeholder="1. Beyoncé&#10;2. Taylor Swift&#10;• Keanu Reeves">${esc(bulkDraft)}</textarea><p id="bulk-count" class="muted">${pendingImport?pendingImport.items.length+' cards detected':'Review to check cards before saving.'}</p>${csvMapping()}<div class="form-actions"><button class="primary">Review Import</button>${button('cancel-edit','Cancel')}</div></form>`;
+  app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards</span>${button('back','All Decks')}</div>${editorTabs()}${organization(d,'regular')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Bulk Add')}</div>
     ${form}${importPreview()}<p class="section-label">CARDS IN ORDER</p><section class="list-panel">${d.cards.slice(expandedCards?0:cardPage*50,expandedCards?undefined:cardPage*50+50).map((c,i)=>`<div class="card-row ordered-row"><button class="ordered-edit" data-edit="${esc(c.id)}"><span class="number">${(expandedCards?0:cardPage*50)+i+1}</span><span class="card-text">${esc(c.text)}${d.compatibleModes.includes('flashcards')?`<small class="muted study-back-preview">${esc(c.back||'No back added')}</small>`:''}</span></button>${reorderControls('card',c.id,(expandedCards?0:cardPage*50)+i,d.cards.length)}</div>`).join('') || '<p class="empty">No cards yet.</p>'}</section>
     ${pagination(d.cards.length)}
     <details class="panel"><summary>Deck options</summary>${duplicateReport(d.cards)}<div class="option-list">${button('duplicate-deck','Duplicate Deck')}${button('rename-deck','Rename Deck')}${button('backup-deck','Back Up This Deck')}${button('delete-deck','Delete Deck','danger')}</div></details>`;
@@ -399,7 +417,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.19.2')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.20.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <section class="panel"><h2>Device Handoff Safety</h2><p class="muted">Tips for restricting your phone to DeckForge before sharing it.</p>${button('device-safety','Review Safety Tutorial')}${button('reset-safety','Reset First-Run Tutorial','quiet full')}</section><p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
@@ -431,14 +449,14 @@ function navigate(target: string,nextSection?:typeof section): void {
   if(['library','editor','taboo-library','taboo-editor','game-decks'].includes(target))section='decks';
   if(MODES.some(m=>m.id===target)){launchContext=(target==='lookup'||target==='flashcards'||section==='work')?'work':'play';section=launchContext;showAllDecks=false;selected='';tabooSelected='';promptIds=undefined;promptSearch='';promptActivityMode='none';promptFixed={};promptSession=undefined;}
   gameGeneration++;flipAnimation?.cancel();calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
-  study=undefined;presenting=false;presentationControls=true;expandedCards=false;pendingImport=undefined;bulkDraft='';revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); app.focus({preventScroll:true});window.scrollTo({top:0});
+  study=undefined;presenting=false;presentationControls=true;expandedCards=false;pendingImport=undefined;bulkDraft='';resetBulkSource();revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); app.focus({preventScroll:true});window.scrollTo({top:0});
   if(previousSection!==section){
     const tabs=['play','work','link','decks'];
     animateNavigation(tabs.indexOf(section)>tabs.indexOf(previousSection)?'tab-right':'tab-left');
   }else if(previousRoute!==route)animateNavigation(['home','library','taboo-library'].includes(route)?'back':'forward');
 }
 function openEntry(next: typeof entry): void {
-  pendingImport=undefined;bulkDraft='';skipImportDuplicates=false;confirmActivityDelete=false;entry=next; render(); app.querySelector<HTMLElement>('form:not(#organization-form) input,form:not(#organization-form) textarea')?.focus();
+  pendingImport=undefined;bulkDraft='';resetBulkSource();skipImportDuplicates=false;confirmActivityDelete=false;entry=next; render(); app.querySelector<HTMLElement>('form:not(#organization-form) input,form:not(#organization-form) textarea')?.focus();
 }
 async function downloadBackup(value:Library,fullLibrary=false):Promise<void>{
   const result=await webShare.saveFile(exportBackup(value),`DeckForge-backup-${new Date().toISOString().slice(0,10)}.json`);
@@ -482,8 +500,8 @@ async function action(name: string): Promise<void> {
     case 'tv-fullscreen':if(document.documentElement.requestFullscreen)void document.documentElement.requestFullscreen().catch(()=>say('Use landscape and your device’s screen-mirroring controls.'));else say('Use landscape and your device’s screen-mirroring controls.');break;
     case 'presentation-controls':presentationControls=!presentationControls;render();break;
     case 'duplicate-deck':{const source=route==='taboo-editor'?tabooDeck():d;if(!source)break;const names=(route==='taboo-editor'?library.tabooDecks??[]:library.decks).map(x=>x.name);const copy=copyDeck(source,names,uid);await mutate(next=>{if('activities' in copy)next.decks.push(copy);else(next.tabooDecks??=[]).push(copy);});if('activities' in copy)selected=copy.id;else tabooSelected=copy.id;expandedCards=false;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';render();say('Independent copy saved. The original deck is unchanged.');break;}
-    case 'confirm-import':{const review=pendingImport;if(!review)break;const target=review.kind==='taboo'?tabooDeck():d;if(!target||target.id!==review.deckId)throw new Error('Reopen import for this deck.');const existing=review.kind==='activities'?(target as Deck).activities:target.cards;const items=importItems(review,existing,skipImportDuplicates);if(!items.length){say('No new lines to import. Uncheck Skip duplicates to keep them.');break;}await mutate(next=>{if(review.kind==='taboo'){const t=next.tabooDecks!.find(x=>x.id===target.id)!;items.forEach(c=>t.cards.push({id:uid(),text:c.text,forbidden:c.forbidden!}));}else{const t=next.decks.find(x=>x.id===target.id)!;if(review.kind==='activities'){const createdAt=new Date().toISOString();items.forEach(c=>t.activities.push({id:uid(),text:c.text,createdAt}));}else items.forEach(c=>t.cards.push({id:uid(),text:c.text}));}});pendingImport=undefined;bulkDraft='';entry='';render();say(`${items.length} ${review.kind==='activities'?'activities':'cards'} saved.`);break;}
-    case 'editor-cards':case 'editor-activities':pendingImport=undefined;bulkDraft='';confirmActivityDelete=false;editorSection=name==='editor-cards'?'cards':'activities';entry='';editingCard=undefined;editingActivity=undefined;render();break;
+    case 'confirm-import':{const review=pendingImport;if(!review)break;if(review.problems?.length)throw new Error('Fix the import problems before saving.');const target=review.kind==='taboo'?tabooDeck():d;if(!target||target.id!==review.deckId)throw new Error('Reopen import for this deck.');const existing=review.kind==='activities'?(target as Deck).activities:target.cards;const items=importItems(review,existing,skipImportDuplicates);if(!items.length){say('No new lines to import. Uncheck Skip duplicates to keep them.');break;}await mutate(next=>{if(review.kind==='taboo'){const t=next.tabooDecks!.find(x=>x.id===target.id)!;items.forEach(c=>t.cards.push({id:uid(),text:c.text,forbidden:c.forbidden!}));}else{const t=next.decks.find(x=>x.id===target.id)!;if(review.kind==='activities'){const createdAt=new Date().toISOString();items.forEach(c=>t.activities.push({id:uid(),text:c.text,createdAt}));}else items.forEach(c=>t.cards.push({id:uid(),text:c.text,...(c.back?{back:c.back}:{})}));}});pendingImport=undefined;bulkDraft='';resetBulkSource();entry='';render();say(`${items.length} ${review.kind==='activities'?'activities':'cards'} saved.`);break;}
+    case 'editor-cards':case 'editor-activities':pendingImport=undefined;bulkDraft='';resetBulkSource();confirmActivityDelete=false;editorSection=name==='editor-cards'?'cards':'activities';entry='';editingCard=undefined;editingActivity=undefined;render();break;
     case 'add-activity':editingActivity=undefined;openEntry('activity');break;
     case 'activity-bulk':openEntry('activity-bulk');break;
     case 'activity-page-prev':activityPage--;render();break;
@@ -510,12 +528,13 @@ async function action(name: string): Promise<void> {
     case 'new-deck': openEntry('new-deck'); break;
     case 'rename-deck': openEntry('rename'); break;
     case 'add-card': editingCard=undefined; openEntry('card'); break;
+    case 'use-paste':resetBulkSource();pendingImport=undefined;render();break;
     case 'bulk': openEntry('bulk'); break;
     case 'delete-deck': if(d && confirm(`Delete “${d.name}” and its ${d.cards.length} cards?`)) { await mutate(next=>{next.decks=next.decks.filter(x=>x.id!==d.id);},true); restorePoint=await recovery(); selected=''; entry=''; route='library'; render(); say('Deck deleted. You can recover the library from Backups.'); } break;
     case 'delete-card': if(d && editingCard && confirm('Delete this card?')) {
       const id=editingCard; await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;target.cards=target.cards.filter(c=>c.id!==id);},true); editingCard=undefined;entry='';restorePoint=await recovery();render();say('Card deleted. A local restore point was saved.');
     } break;
-    case 'cancel-edit': pendingImport=undefined;bulkDraft='';confirmActivityDelete=false;editingActivity=undefined;editingCard=undefined; entry=''; render(); break;
+    case 'cancel-edit': pendingImport=undefined;bulkDraft='';resetBulkSource();confirmActivityDelete=false;editingActivity=undefined;editingCard=undefined; entry=''; render(); break;
     case 'page-prev': cardPage--; render(); break;
     case 'page-next': cardPage++; render(); break;
     case 'prompt-draw': if(!promptSession)promptSession=new PromptSession(availableDecks().visible.filter(d=>promptIds?.has(d.id)),promptActivityMode,promptFixed);promptDraw=promptSession.draw();render();if(promptDraw)window.scrollTo({top:0});break;
@@ -593,7 +612,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
       await mutate(next=>{Object.assign((format==='taboo'?next.tabooDecks:next.decks)!.find(d=>d.id===target.id)!,fields);});say('Deck organization saved.');break;
     }
     case 'activity-form':if(!text)throw new Error('Enter an Activity template.');if(d){const id=editingActivity;await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;if(id)target.activities.find(a=>a.id===id)!.text=text;else target.activities.push({id:uid(),text,createdAt:new Date().toISOString()});});entry='';editingActivity=undefined;render();say('Activity saved.');}break;
-    case 'activity-bulk-form':case 'taboo-bulk-form':case 'bulk-form':{const kind=form.id==='activity-bulk-form'?'activities':form.id==='taboo-bulk-form'?'taboo':'cards';const target=kind==='taboo'?tabooDeck():d;if(!target)break;bulkDraft=String(data.get('text')??'');pendingImport=reviewImport(kind,target.id,bulkDraft,kind==='activities'?(target as Deck).activities:target.cards);render();document.querySelector('#import-review')?.scrollIntoView({block:'nearest'});say('Review the cleaned lines, then confirm to save.');break;}
+    case 'activity-bulk-form':case 'taboo-bulk-form':case 'bulk-form':{const kind=form.id==='activity-bulk-form'?'activities':form.id==='taboo-bulk-form'?'taboo':'cards';const target=kind==='taboo'?tabooDeck():d;if(!target)break;bulkDraft=String(data.get('text')??'');if(kind==='cards')reviewCards();else pendingImport=reviewImport(kind,target.id,bulkDraft,kind==='activities'?(target as Deck).activities:target.cards);render();document.querySelector('#import-review')?.scrollIntoView({block:'nearest'});say('Review the cleaned lines, then confirm to save.');break;}
 
     case 'taboo-new-form':if(!name)throw new Error('Enter a deck name.');{const id=uid();await mutate(next=>{(next.tabooDecks??=[]).push({id,name,cards:[],...metadata(undefined,undefined,'taboo')});});tabooSelected=id;route='taboo-editor';entry='';cardPage=0;render();say('Taboo deck saved.');break;}
     case 'taboo-rename-form':if(!name)throw new Error('Enter a deck name.');await mutate(next=>{next.tabooDecks!.find(d=>d.id===tabooSelected)!.name=name;});entry='';render();break;
@@ -623,11 +642,27 @@ async function submit(form: HTMLFormElement): Promise<void> {
   }
 }
 app.addEventListener('submit',event=>{if((event.target as HTMLElement).closest('.multiplayer'))return;event.preventDefault();if(event.target instanceof HTMLFormElement) void submit(event.target).catch(error=>say(`Could not save: ${String(error)}`));});
-app.addEventListener('input',event=>{if(event.target instanceof HTMLTextAreaElement&&['bulk-text','activity-bulk','taboo-bulk'].includes(event.target.id)){bulkDraft=event.target.value;pendingImport=undefined;document.querySelector('#import-review')?.remove();}if(event.target instanceof HTMLElement&&['activity-text','preview-card-text'].includes(event.target.id))updateActivityPreview();if(event.target instanceof HTMLInputElement&&event.target.id==='library-search'){libraryFilters[route==='taboo-library'?'taboo':'regular'].search=event.target.value;revealedDeck='';updateLibraryResults();}if(event.target instanceof HTMLInputElement&&event.target.id==='prompt-search'){promptSearch=event.target.value;const term=promptSearch.toLocaleLowerCase();app.querySelectorAll<HTMLElement>('[data-prompt-name]').forEach(el=>{el.hidden=!el.dataset.promptName!.includes(term);});}if(event.target instanceof HTMLInputElement&&event.target.dataset.tabooTeam!==undefined)tabooTeams[Number(event.target.dataset.tabooTeam)]=event.target.value;if(event.target instanceof HTMLInputElement && event.target.dataset.team!==undefined)draftTeams[Number(event.target.dataset.team)]=event.target.value;if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent=`${importLines(event.target.value).length} cards ready`;});
+app.addEventListener('input',event=>{if(event.target instanceof HTMLTextAreaElement&&['bulk-text','activity-bulk','taboo-bulk'].includes(event.target.id)){bulkDraft=event.target.value;bulkReadGeneration++;bulkTable=undefined;bulkMapping=undefined;pendingImport=undefined;document.querySelector('#import-review')?.remove();if(event.target.id==='bulk-text')document.querySelector('#csv-columns')?.remove();}if(event.target instanceof HTMLElement&&['activity-text','preview-card-text'].includes(event.target.id))updateActivityPreview();if(event.target instanceof HTMLInputElement&&event.target.id==='library-search'){libraryFilters[route==='taboo-library'?'taboo':'regular'].search=event.target.value;revealedDeck='';updateLibraryResults();}if(event.target instanceof HTMLInputElement&&event.target.id==='prompt-search'){promptSearch=event.target.value;const term=promptSearch.toLocaleLowerCase();app.querySelectorAll<HTMLElement>('[data-prompt-name]').forEach(el=>{el.hidden=!el.dataset.promptName!.includes(term);});}if(event.target instanceof HTMLInputElement&&event.target.dataset.tabooTeam!==undefined)tabooTeams[Number(event.target.dataset.tabooTeam)]=event.target.value;if(event.target instanceof HTMLInputElement && event.target.dataset.team!==undefined)draftTeams[Number(event.target.dataset.team)]=event.target.value;if(event.target instanceof HTMLTextAreaElement && event.target.id==='bulk-text')document.querySelector('#bulk-count')!.textContent='Review to check cards before saving.';});
 app.addEventListener('change',event=>{
   if(event.target instanceof HTMLInputElement&&event.target.id==='skip-import-duplicates')skipImportDuplicates=event.target.checked;
   if(event.target instanceof HTMLSelectElement&&event.target.id==='preview-card')updateActivityPreview();
   const el=event.target;
+  if((el instanceof HTMLSelectElement||el instanceof HTMLInputElement)&&['csv-front','csv-back','csv-header'].includes(el.id)&&bulkMapping){
+    if(el.id==='csv-header')bulkMapping.header=(el as HTMLInputElement).checked;
+    else if(el.id==='csv-front')bulkMapping.front=Number(el.value);else bulkMapping.back=el.value==='none'?null:Number(el.value);
+    reviewCards();render();
+  }
+  if(el instanceof HTMLInputElement&&el.id==='card-import-file'){
+    const file=el.files?.[0];if(!file)return;const token=++bulkReadGeneration,target=selected;pendingImport=undefined;
+    void (async()=>{
+      if(!/\.(txt|csv)$/i.test(file.name))throw new Error('Choose a TXT or CSV file.');
+      if(file.size>MAX_IMPORT_BYTES)throw new Error('Choose a file smaller than 20 MB.');
+      const contents=await file.text();
+      if(token!==bulkReadGeneration||route!=='editor'||entry!=='bulk'||selected!==target)return;
+      bulkDraft=contents;bulkFormat=/\.csv$/i.test(file.name)?'csv':'txt';bulkFilename=file.name;bulkMapping=undefined;reviewCards();render();say('File read locally. Review the preview before importing.');
+    })().catch(error=>{if(token===bulkReadGeneration&&route==='editor'&&entry==='bulk'&&selected===target){render();say(String(error));}});
+  }
+
   if(el instanceof HTMLSelectElement&&['library-context','library-mode','library-sort'].includes(el.id)){const filter=libraryFilters[route==='taboo-library'?'taboo':'regular'];if(el.id==='library-context')filter.context=el.value;else if(el.id==='library-mode')filter.mode=el.value;else filter.sort=el.value as 'name'|'cards';revealedDeck='';updateLibraryResults();}
   if(el instanceof HTMLInputElement&&el.id==='acknowledge-replace'){replaceAcknowledged=el.checked;const button=app.querySelector<HTMLButtonElement>('[data-action="restore-backup"]');if(button)button.disabled=!replaceAcknowledged;}
   if(el instanceof HTMLInputElement&&['large-text','backup-reminders'].includes(el.id))void setPreferences(next=>{if(el.id==='large-text')next.largeText=el.checked;else{next.backupReminders=el.checked;if(el.checked&&!next.reminderSince)next.reminderSince=new Date().toISOString();}}).catch(error=>say(`Could not save preference: ${String(error)}`));
