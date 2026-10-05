@@ -11,7 +11,7 @@ A local-first deck toolkit for party games, group activities and facilitation. C
 
 Regular decks contain ordered cards and Activities. Context (`play`, `work`, `both`) recommends decks without restricting access. Intended game compatibility organizes pickers; Show All Decks offers an escape hatch when the card format and size fit the game. Jenga requires exactly 54 cards in block-number order.
 
-Catchphrase supports saved teams, Random (30–90 seconds) or fixed timers in 15-second increments, hidden countdown, accelerating ticks and an end buzzer. Headbands supports manual answers or permission-based motion controls with guided landscape placement, a distinct three-second preparation chime and calibrated tilts. Taboo uses an answer plus five forbidden words and team scoring. Prompt Picker supports a session-only selection of multiple decks, choosing a deck uniformly before a card.
+Catchphrase supports saved teams, Random (60–120 seconds) or fixed timers in 15-second increments, hidden countdown, accelerating ticks and an end buzzer. Headbands supports manual answers or permission-based motion controls with guided landscape placement, a distinct three-second preparation chime and calibrated tilts. Taboo uses an answer plus five forbidden words and team scoring. Prompt Picker supports a session-only selection of multiple decks, choosing a deck uniformly before a card.
 
 ## Deck editing
 
@@ -117,3 +117,7 @@ Link also includes Trivia, Team Trivia, Clue Board, Survey Showdown and Word Whe
 ## Complete backups and Game Deck editing
 
 In version 0.19.0, Backups → Back Up Everything includes regular/Taboo decks, backs, Activities, Game Decks and saved settings. Older collection files remain readable. Game Decks now have labeled card fields as well as bulk editing. See [complete backup and editing guide](COMPLETE_BACKUPS.md) for exact steps and limits.
+
+## Navigation and rotation
+
+Bottom tabs appear only on the Play, Work, Deck Library and Link landing screens. Game setup, gameplay, editors, Settings and Link room details use Back navigation. In a Link room, Back leaves temporarily and preserves same-tab recovery. Menus remain usable in landscape; gameplay keeps its existing landscape layouts. Viewport refreshes settle rotation events before writing a changed height, while retaining keyboard protection.
