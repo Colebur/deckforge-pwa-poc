@@ -95,3 +95,13 @@ export async function finishComplete(value:CompleteData):Promise<void>{
  const valid=validateComplete(value),db=await open();
  return new Promise((resolve,reject)=>{const tx=db.transaction('state','readwrite'),store=tx.objectStore('state');store.put(encodeState(valid.library),'library');store.put(valid.preferences,'preferences');store.delete('pending-complete-restore');tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error('Restore save canceled.'));});
 }
+
+// Device onboarding stays local and is intentionally separate from content backups.
+export async function loadSafetySeen():Promise<boolean>{return (await read('device-handoff-safety-seen'))===true;}
+export async function saveSafetySeen(seen:boolean):Promise<void>{
+  const db=await open();
+  await new Promise<void>((resolve,reject)=>{
+    const tx=db.transaction('state','readwrite');tx.objectStore('state').put(seen,'device-handoff-safety-seen');
+    tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+  });
+}
