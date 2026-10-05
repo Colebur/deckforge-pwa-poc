@@ -1,3 +1,5 @@
+import {RecentCards} from './recent-cards.js';
+import {loadRecentCards,saveRecentCards} from './storage.js';
 import {prepareCardImport,mappedCards,MAX_IMPORT_BYTES,type CardImportFormat,type CardImportTable,type ColumnMapping} from './card-import.js';
 import {reviewCardItems} from './editor-tools.js';
 import {mobilePlatform,shouldOfferSafety,mountSafetyTutorial} from './device-safety.js';
@@ -55,6 +57,19 @@ const placement=new HeadbandsSetup();
 let placementLabel='';
 const sideways=():boolean=>matchMedia('(orientation: landscape)').matches;
 let library: Library;
+let recentWrites:Promise<void>=Promise.resolve();
+let recentStorageReady=false;
+let recentCards=new RecentCards(undefined,queueRecentSave);
+function queueRecentSave():void {
+  if(!recentStorageReady)return;
+  const snapshot=recentCards.snapshot();
+  recentWrites=recentWrites.catch(()=>{}).then(()=>saveRecentCards(snapshot));
+  void recentWrites.catch(()=>say('Recent card memory could not be saved. Deck content is safe; keep this app open and try again.'));
+}
+function reconcileRecentCards():void {recentCards.reconcile([...library.decks,...(library.tabooDecks??[])]);}
+function recentCardOptions(id:string):string {
+  return `<label class="check"><input id="recent-card-memory" type="checkbox" ${recentCards.enabled(id)?'checked':''} ${recentStorageReady?'':'disabled'}> Recent Card Memory</label><p class="muted">Random draws favor fresh cards across sessions. Remembers the latest half of this deck locally.</p>${button('reset-recent-cards','Reset Recent Cards','quiet')}<p class="muted">${recentCards.ids(id).length} recent cards remembered. Jenga and Flashcards are unaffected.</p>`;
+}
 let preferences=defaultPreferences();
 let safetySeen=true; // Wait for the local flag before offering first-run help.
 const safetyPlatform=mobilePlatform(navigator.userAgent,navigator.maxTouchPoints);
@@ -303,7 +318,7 @@ function renderEditor(): void {
   app.innerHTML=`<div class="toolbar"><span class="muted">${d.cards.length} cards</span>${button('back','All Decks')}</div>${editorTabs()}${organization(d,'regular')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Bulk Add')}</div>
     ${form}${importPreview()}<p class="section-label">CARDS IN ORDER</p><section class="list-panel">${d.cards.slice(expandedCards?0:cardPage*50,expandedCards?undefined:cardPage*50+50).map((c,i)=>`<div class="card-row ordered-row"><button class="ordered-edit" data-edit="${esc(c.id)}"><span class="number">${(expandedCards?0:cardPage*50)+i+1}</span><span class="card-text">${esc(c.text)}${d.compatibleModes.includes('flashcards')?`<small class="muted study-back-preview">${esc(c.back||'No back added')}</small>`:''}</span></button>${reorderControls('card',c.id,(expandedCards?0:cardPage*50)+i,d.cards.length)}</div>`).join('') || '<p class="empty">No cards yet.</p>'}</section>
     ${pagination(d.cards.length)}
-    <details class="panel"><summary>Deck options</summary>${duplicateReport(d.cards)}<div class="option-list">${button('duplicate-deck','Duplicate Deck')}${button('rename-deck','Rename Deck')}${button('backup-deck','Back Up This Deck')}${button('delete-deck','Delete Deck','danger')}</div></details>`;
+    <details class="panel"><summary>Deck options</summary>${duplicateReport(d.cards)}${recentCardOptions(d.id)}<div class="option-list">${button('duplicate-deck','Duplicate Deck')}${button('rename-deck','Rename Deck')}${button('backup-deck','Back Up This Deck')}${button('delete-deck','Delete Deck','danger')}</div></details>`;
 }
 function resetLookup():void {
   lookupIndex=null;activityMode='none';fixedActivityId='';lookupActivity=undefined;
@@ -358,7 +373,7 @@ function scores():string {
 function renderCatchphrase(): void {
   if(!round){
     const choose=picker();
-    app.innerHTML=`<form id="round-form" class="panel">${choose}${deck()?.cards.length?`<label for="team-count">Teams</label><select id="team-count">${Array.from({length:7},(_,i)=>`<option value="${i+2}" ${draftTeams.length===i+2?'selected':''}>${i+2} teams</option>`).join('')}</select>${draftTeams.map((name,i)=>`<label for="team-${i}">Team ${i+1} name</label><input id="team-${i}" data-team="${i}" value="${esc(name)}" maxlength="80" required>`).join('')}<label for="duration">Round timer</label><select id="duration" name="duration">${durationPicker(draftDuration)}</select><label class="check"><input type="checkbox" id="timer-sound" ${timerSound?'checked':''}> Timer sound</label><p class="muted">Random picks a fresh duration each round. The countdown stays hidden.</p><button class="primary full" ${preparing?'disabled':''}>${preparing?'Preparing…':'Start Game'}</button>`:''}</form><details class="panel"><summary>How to play</summary><p>Give clues until your team guesses the card. Tap Next Card and pass the phone to the next team. At the buzzer, choose which team gets one point, or choose No point.</p><p>Cards shuffle and repeat after the whole deck. Pause stops the timer and sounds. Leaving the app pauses the round.</p></details>`;return;
+    app.innerHTML=`<form id="round-form" class="panel">${choose}${deck()?.cards.length?`<label for="team-count">Teams</label><select id="team-count">${Array.from({length:7},(_,i)=>`<option value="${i+2}" ${draftTeams.length===i+2?'selected':''}>${i+2} teams</option>`).join('')}</select>${draftTeams.map((name,i)=>`<label for="team-${i}">Team ${i+1} name</label><input id="team-${i}" data-team="${i}" value="${esc(name)}" maxlength="80" required>`).join('')}<label for="duration">Round timer</label><select id="duration" name="duration">${durationPicker(draftDuration)}</select><label class="check"><input type="checkbox" id="timer-sound" ${timerSound?'checked':''}> Timer sound</label><p class="muted">Random picks a fresh duration each round. The countdown stays hidden.</p><button class="primary full" ${preparing?'disabled':''}>${preparing?'Preparing…':'Start Game'}</button>`:''}</form><details class="panel"><summary>How to play</summary><p>Give clues until your team guesses the card. Tap Next Card and pass the phone to the next team. At the buzzer, choose which team gets one point, or choose No point.</p><p>Cards draw randomly, favoring fresh cards when Recent Card Memory is on, and repeat after the whole deck. Pause stops the timer and sounds. Leaving the app pauses the round.</p></details>`;return;
   }
   const game=round as Round;
   const ended=round.phase==='ended',paused=round.phase==='paused';
@@ -387,7 +402,7 @@ function renderTabooEditor():void{
   if(entry==='rename')form=`<form id="taboo-rename-form" class="panel"><label for="taboo-name">Deck name</label><input id="taboo-name" name="name" value="${esc(d.name)}" required maxlength="120"><div class="form-actions"><button class="primary">Save Name</button>${button('cancel-edit','Cancel')}</div></form>`;
   if(entry==='card')form=`<form id="taboo-card-form" class="panel"><h2>${c?'Edit':'Add'} Taboo Card</h2><label for="taboo-answer">Answer</label><input id="taboo-answer" name="text" value="${esc(c?.text??'')}" required>${Array.from({length:5},(_,i)=>`<label for="forbidden-${i}">Forbidden word ${i+1}</label><input id="forbidden-${i}" name="forbidden-${i}" value="${esc(c?.forbidden[i]??'')}" required>`).join('')}<div class="form-actions"><button class="primary">Save Card</button>${button('cancel-edit','Cancel')}${c?button('taboo-delete-card','Delete','danger'):''}</div></form>`;
   if(entry==='bulk')form=`<form id="taboo-bulk-form" class="panel"><h2>Paste Taboo Cards</h2><p class="muted">One card per line. Separate the answer and five forbidden words with |.</p><label for="taboo-bulk">Cards</label><textarea id="taboo-bulk" name="text" required placeholder="Astronaut | Space | NASA | Rocket | Moon | Helmet">${esc(bulkDraft)}</textarea><p class="muted">Every line is checked before any cards are saved.</p><div class="form-actions"><button class="primary">Review Import</button>${button('cancel-edit','Cancel')}</div></form>`;
-  app.innerHTML=`<div class="toolbar">${button('taboo-library','‹ Taboo Decks')}<span class="muted">${d.cards.length} cards</span></div>${organization(d,'taboo')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Paste a List')}</div>${form}${importPreview()}<section class="list-panel">${d.cards.slice(expandedCards?0:cardPage*50,expandedCards?undefined:cardPage*50+50).map(c=>`<button class="menu-row" data-taboo-edit="${esc(c.id)}"><span><strong>${esc(c.text)}</strong><small>${c.forbidden.map(esc).join(' · ')}</small></span><span class="arrow">›</span></button>`).join('')||'<p class="empty">Add an answer and five forbidden words.</p>'}</section>${pagination(d.cards.length)}<details class="panel"><summary>Deck options</summary>${duplicateReport(d.cards)}<div class="option-list">${button('duplicate-deck','Duplicate Deck')}${button('rename-deck','Rename Deck')}${button('taboo-backup','Back Up This Deck')}${button('taboo-delete','Delete Deck','danger')}</div></details>`;
+  app.innerHTML=`<div class="toolbar">${button('taboo-library','‹ Taboo Decks')}<span class="muted">${d.cards.length} cards</span></div>${organization(d,'taboo')}<div class="actions">${button('add-card','＋ Add Card','primary')}${button('bulk','Paste a List')}</div>${form}${importPreview()}<section class="list-panel">${d.cards.slice(expandedCards?0:cardPage*50,expandedCards?undefined:cardPage*50+50).map(c=>`<button class="menu-row" data-taboo-edit="${esc(c.id)}"><span><strong>${esc(c.text)}</strong><small>${c.forbidden.map(esc).join(' · ')}</small></span><span class="arrow">›</span></button>`).join('')||'<p class="empty">Add an answer and five forbidden words.</p>'}</section>${pagination(d.cards.length)}<details class="panel"><summary>Deck options</summary>${duplicateReport(d.cards)}${recentCardOptions(d.id)}<div class="option-list">${button('duplicate-deck','Duplicate Deck')}${button('rename-deck','Rename Deck')}${button('taboo-backup','Back Up This Deck')}${button('taboo-delete','Delete Deck','danger')}</div></details>`;
 }
 function renderTaboo():void{
   const pool=modeDecks(library.tabooDecks??[],'taboo',launchContext,showAllDecks),playable=pool.visible;
@@ -417,7 +432,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.20.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.21.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <section class="panel"><h2>Device Handoff Safety</h2><p class="muted">Tips for restricting your phone to DeckForge before sharing it.</p>${button('device-safety','Review Safety Tutorial')}${button('reset-safety','Reset First-Run Tutorial','quiet full')}</section><p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
@@ -439,7 +454,7 @@ async function mutate(change: (next: Library)=>void, checkpoint=false): Promise<
   saving=true;
   try {
     const next=structuredClone(library); change(next);
-    await save(next,checkpoint); library=next; render();
+    await save(next,checkpoint); library=next; reconcileRecentCards(); render();
   } finally { saving=false; }
 }
 function navigate(target: string,nextSection?:typeof section): void {
@@ -530,6 +545,12 @@ async function action(name: string): Promise<void> {
     case 'add-card': editingCard=undefined; openEntry('card'); break;
     case 'use-paste':resetBulkSource();pendingImport=undefined;render();break;
     case 'bulk': openEntry('bulk'); break;
+    case 'reset-recent-cards': {
+      const target=route==='taboo-editor'?tabooDeck():d;
+      if(target&&recentStorageReady&&confirm(`Reset recent cards for “${target.name}”? All cards will be fresh for random draws.`)){
+        recentCards.reset(target.id);await recentWrites;render();say('Recent cards reset for this deck.');
+      }break;
+    }
     case 'delete-deck': if(d && confirm(`Delete “${d.name}” and its ${d.cards.length} cards?`)) { await mutate(next=>{next.decks=next.decks.filter(x=>x.id!==d.id);},true); restorePoint=await recovery(); selected=''; entry=''; route='library'; render(); say('Deck deleted. You can recover the library from Backups.'); } break;
     case 'delete-card': if(d && editingCard && confirm('Delete this card?')) {
       const id=editingCard; await mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;target.cards=target.cards.filter(c=>c.id!==id);},true); editingCard=undefined;entry='';restorePoint=await recovery();render();say('Card deleted. A local restore point was saved.');
@@ -537,7 +558,7 @@ async function action(name: string): Promise<void> {
     case 'cancel-edit': pendingImport=undefined;bulkDraft='';resetBulkSource();confirmActivityDelete=false;editingActivity=undefined;editingCard=undefined; entry=''; render(); break;
     case 'page-prev': cardPage--; render(); break;
     case 'page-next': cardPage++; render(); break;
-    case 'prompt-draw': if(!promptSession)promptSession=new PromptSession(availableDecks().visible.filter(d=>promptIds?.has(d.id)),promptActivityMode,promptFixed);promptDraw=promptSession.draw();render();if(promptDraw)window.scrollTo({top:0});break;
+    case 'prompt-draw': if(!promptSession)promptSession=new PromptSession(availableDecks().visible.filter(d=>promptIds?.has(d.id)),promptActivityMode,promptFixed,id=>recentCards.forDeck(id));promptDraw=promptSession.draw();render();if(promptDraw)window.scrollTo({top:0});break;
     case 'prompt-reroll':promptSession?.reroll();render();break;
     case 'prompt-select-all':promptIds=new Set(availableDecks().compatible.map(d=>d.id));promptSession=undefined;render();break;
     case 'prompt-clear':promptIds=new Set();promptSession=undefined;render();break;
@@ -587,8 +608,8 @@ async function action(name: string): Promise<void> {
     case 'restore-backup': if(pendingBackup) {
       await recoverCompleteStartup();
       if(restoreMode==='replace'&&!replaceAcknowledged)throw new Error('Acknowledge replacement before continuing.');
-      if(loadFailure&&pendingBackup.packs===undefined){const restored=restoreBackup(library,pendingBackup.library,restoreMode);await save(restored,true);library=restored;}
-      else {if(saving)throw new Error('A save is in progress.');saving=true;try{const before=await snapshotComplete(),after=restoreComplete(before,pendingBackup,restoreMode);await saveComplete(before,after);library=after.library;preferences=after.preferences;completePoint=await completeRecovery();}finally{saving=false;}}
+      if(loadFailure&&pendingBackup.packs===undefined){const restored=restoreBackup(library,pendingBackup.library,restoreMode);await save(restored,true);library=restored;reconcileRecentCards();}
+      else {if(saving)throw new Error('A save is in progress.');saving=true;try{const before=await snapshotComplete(),after=restoreComplete(before,pendingBackup,restoreMode);await saveComplete(before,after);library=after.library;reconcileRecentCards();preferences=after.preferences;completePoint=await completeRecovery();}finally{saving=false;}}
       tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;loadFailure='';restorePoint=await recovery();pendingBackup=undefined;entry='';selected='';lookupIndex=null;route='library';render();say('Backup restored and saved.');
     } break;
     case 'recover-complete':if(completePoint){pendingBackup={...completePoint,source:'Complete local restore point'};backupFilename='Complete local restore point';restoreMode='replace';replaceAcknowledged=false;render();say('Review all collections and settings before recovery.');}break;
@@ -617,7 +638,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
     case 'taboo-new-form':if(!name)throw new Error('Enter a deck name.');{const id=uid();await mutate(next=>{(next.tabooDecks??=[]).push({id,name,cards:[],...metadata(undefined,undefined,'taboo')});});tabooSelected=id;route='taboo-editor';entry='';cardPage=0;render();say('Taboo deck saved.');break;}
     case 'taboo-rename-form':if(!name)throw new Error('Enter a deck name.');await mutate(next=>{next.tabooDecks!.find(d=>d.id===tabooSelected)!.name=name;});entry='';render();break;
     case 'taboo-card-form':{const value=validateTabooCard(text,Array.from({length:5},(_,i)=>String(data.get('forbidden-'+i)??'').trim()));await mutate(next=>{const d=next.tabooDecks!.find(d=>d.id===tabooSelected)!;if(editingCard)Object.assign(d.cards.find(c=>c.id===editingCard)!,value);else d.cards.push({id:uid(),...value});});entry='';editingCard=undefined;render();say('Taboo card saved.');break;}
-    case 'taboo-round-form':{const d=tabooDeck();if(!d||preparing)break;const names=teamNames(tabooTeams),duration=tabooDuration;roundSeconds(duration);const token=++gameGeneration;preparing=true;const sound=readyAudio();render();try{await Promise.all([sound,mutate(next=>{next.tabooTeams=names;next.tabooDuration=duration;})]);if(token!==gameGeneration||document.hidden)return;tabooMatch=new TabooGame(d.cards,names,duration);round=tabooMatch.start(performance.now());startCues();}finally{preparing=false;render();}break;}
+    case 'taboo-round-form':{const d=tabooDeck();if(!d||preparing)break;const names=teamNames(tabooTeams),duration=tabooDuration;roundSeconds(duration);const token=++gameGeneration;preparing=true;const sound=readyAudio();render();try{await Promise.all([sound,mutate(next=>{next.tabooTeams=names;next.tabooDuration=duration;})]);if(token!==gameGeneration||document.hidden)return;tabooMatch=new TabooGame(d.cards,names,duration,recentCards.forDeck(d.id));round=tabooMatch.start(performance.now());startCues();}finally{preparing=false;render();}break;}
 
     case 'new-deck': if(!name) throw new Error('Enter a deck name.'); {
       const id=uid();await mutate(next=>next.decks.push({id,name,cards:[],activities:[],...metadata(undefined,MODES.filter(m=>m.format==='regular'&&m.id!=='lookup'&&m.id!=='flashcards').map(m=>m.id),'regular')}));selected=id;route='editor';editorSection='cards';cardPage=0;expandedCards=false;pendingImport=undefined;entry='';render();say('Deck saved.');break;
@@ -632,7 +653,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
       timerSound=document.querySelector<HTMLInputElement>('#timer-sound')!.checked;
       const token=++gameGeneration;preparing=true;const sound=readyAudio();render();
       try{await Promise.all([sound,mutate(next=>{next.duration=duration;next.teams=names;})]);if(token!==gameGeneration||document.hidden)return;
-      match=new TeamGame(d.cards,names,duration);round=match.start(performance.now());startCues();say('');}
+      match=new TeamGame(d.cards,names,duration,recentCards.forDeck(d.id));round=match.start(performance.now());startCues();say('');}
       finally{preparing=false;render();}break;
     }
     case 'headbands-form': if(d && !preparing){
@@ -647,6 +668,10 @@ app.addEventListener('change',event=>{
   if(event.target instanceof HTMLInputElement&&event.target.id==='skip-import-duplicates')skipImportDuplicates=event.target.checked;
   if(event.target instanceof HTMLSelectElement&&event.target.id==='preview-card')updateActivityPreview();
   const el=event.target;
+  if(el instanceof HTMLInputElement&&el.id==='recent-card-memory'){
+    const target=route==='taboo-editor'?tabooDeck():deck();
+    if(target&&recentStorageReady){recentCards.setEnabled(target.id,el.checked);void recentWrites.then(()=>say('Recent Card Memory '+(recentCards.enabled(target.id)?'on':'off')+'.')).catch(()=>{});}
+  }
   if((el instanceof HTMLSelectElement||el instanceof HTMLInputElement)&&['csv-front','csv-back','csv-header'].includes(el.id)&&bulkMapping){
     if(el.id==='csv-header')bulkMapping.header=(el as HTMLInputElement).checked;
     else if(el.id==='csv-front')bulkMapping.front=Number(el.value);else bulkMapping.back=el.value==='none'?null:Number(el.value);
@@ -751,7 +776,7 @@ function startCues():void {
 function beginHeadbands():void {
   calibrating=false;
   if(round instanceof HeadbandsRound&&round.phase==='paused'){round.resume(performance.now());gameAudio.schedule(round.remaining,roundLength,timerSound);void keepAwake();render();}
-  else{round=new HeadbandsRound(deck()!.cards,roundSeconds(headDuration),performance.now());startCues();}
+  else{round=new HeadbandsRound(deck()!.cards,roundSeconds(headDuration),performance.now(),recentCards.forDeck(deck()!.id));startCues();}
 }
 async function prepareHeadbands(resuming:boolean):Promise<void> {
   if(preparing)return;roundSeconds(headDuration);const token=++gameGeneration;preparing=true;calibrating=useTilt;placement.reset();placementLabel='';tilt.reset();sensors.onGravity=undefined;
@@ -837,5 +862,5 @@ async function setupOffline(): Promise<void> {
     registration.addEventListener('updatefound',()=>{const installing=registration.installing;installing?.addEventListener('statechange',ready);});
   } catch(error) {offline='Offline setup failed · reopen online';mark();say(`Offline setup: ${String(error)}`);}
 }
-try {await recoverCompleteStartup();try{safetySeen=await loadSafetySeen();}catch{/* A failed flag read must not interrupt deck loading. */}try{preferences=await loadPreferences();}catch{/* Preferences must never block deck recovery. */}library=await load();tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;restorePoint=await recovery();render();void storageProtection(true);void setupOffline();}
+try {await recoverCompleteStartup();try{safetySeen=await loadSafetySeen();}catch{/* A failed flag read must not interrupt deck loading. */}try{preferences=await loadPreferences();}catch{/* Preferences must never block deck recovery. */}library=await load();try{recentCards=new RecentCards(await loadRecentCards(),queueRecentSave);recentStorageReady=true;reconcileRecentCards();}catch{say('Recent card memory could not be loaded. Decks still work; reopen to retry.');}tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;restorePoint=await recovery();render();void storageProtection(true);void setupOffline();}
 catch(error) {library=emptyLibrary();loadFailure=String(error);futureData=error instanceof NewerFormatError;try{restorePoint=await recovery();}catch{}render();void setupOffline();}

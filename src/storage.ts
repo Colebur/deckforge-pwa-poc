@@ -105,3 +105,14 @@ export async function saveSafetySeen(seen:boolean):Promise<void>{
     tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
   });
 }
+
+// Recent draws are device-local usage state, separate from decks and recovery copies.
+import {decodeRecentCards,type RecentCardState} from './recent-cards.js';
+export async function loadRecentCards():Promise<RecentCardState>{return decodeRecentCards(await read('recent-cards'));}
+export async function saveRecentCards(state:RecentCardState):Promise<void>{
+  const value=decodeRecentCards(state),db=await open();
+  await new Promise<void>((resolve,reject)=>{
+    const tx=db.transaction('state','readwrite');tx.objectStore('state').put(value,'recent-cards');
+    tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error('Recent card save canceled.'));
+  });
+}

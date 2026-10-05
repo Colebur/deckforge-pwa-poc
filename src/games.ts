@@ -1,4 +1,5 @@
-import {Round, shuffled, type Card} from './model.js';
+import {RandomCardBag,type DrawMemory} from './recent-cards.js';
+import {Round, type Card} from './model.js';
 export const TIMER_CHOICES = [0,...Array.from({length:20},(_,i)=>(i+1)*15)];
 export const defaultTeams = (): string[] => ['Team 1','Team 2'];
 export function teamNames(names: string[]): string[] {
@@ -16,14 +17,14 @@ export class TeamGame {
   number=0;
   scored=false;
   round?: Round;
-  constructor(readonly cards: readonly Card[], names: string[], readonly duration: number) {
+  constructor(readonly cards: readonly Card[], names: string[], readonly duration: number,private memory?:DrawMemory) {
     this.teams=teamNames(names);this.scores=this.teams.map(()=>0);roundSeconds(duration);
   }
   start(now: number, random=Math.random): Round {
     if(this.round && (!this.scored || this.round.phase!=='ended')) throw new Error('Choose a team or No point before the next round.');
     const seconds=roundSeconds(this.duration,random);
     if(this.round) this.round.restart(seconds,now);
-    else this.round=new Round(this.cards,seconds,now);
+    else this.round=new Round(this.cards,seconds,now,this.memory);
     this.number++;this.scored=false;return this.round;
   }
   award(team: number | null): boolean {
@@ -41,10 +42,10 @@ export class HeadbandsRound {
   current: Card;
   readonly results: {card: Card; outcome: Outcome}[]=[];
   reason: 'time'|'complete'|'manual'|undefined;
-  private bag: Card[];
-  constructor(cards: readonly Card[], seconds: number, now: number) {
+  private bag: RandomCardBag<Card>;
+  constructor(cards: readonly Card[], seconds: number, now: number,memory?:DrawMemory) {
     if(!cards.length) throw new Error('Add cards first.');
-    if(!Number.isFinite(seconds)||seconds<5||seconds>300)throw new Error('Invalid round length.');this.bag=shuffled(cards.map(c=>({...c})));this.current=this.bag.pop()!;
+    if(!Number.isFinite(seconds)||seconds<5||seconds>300)throw new Error('Invalid round length.');this.bag=new RandomCardBag(cards.map(c=>({...c})),memory);this.bag.refill();this.current=this.bag.draw();
     this.remaining=seconds*1000;this.deadline=now+this.remaining;
   }
   get score(): number {return this.results.filter(r=>r.outcome==='Correct').length;}
@@ -57,7 +58,7 @@ export class HeadbandsRound {
   answer(correct:boolean,now:number): boolean {
     this.tick(now);if(this.phase!=='running') return false;
     this.results.push({card:this.current,outcome:correct?'Correct':'Passed'});
-    if(!this.bag.length){this.phase='ended';this.reason='complete';}else this.current=this.bag.pop()!;
+    if(!this.bag.length){this.phase='ended';this.reason='complete';}else this.current=this.bag.draw();
     return true;
   }
   pause(now:number): void {this.tick(now);if(this.phase==='running')this.phase='paused';}
