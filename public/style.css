@@ -36,7 +36,7 @@ body.playing .tilt-game>.prompt{font-size:clamp(38px,10vw,78px)}
 
 /* Shared section navigation stays out of immersive gameplay. */
 body.has-tabs{padding-bottom:calc(env(safe-area-inset-bottom) + 100px)}
-#main-tabs{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:680px;display:flex;gap:4px;padding:8px max(12px,env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 8px) max(12px,env(safe-area-inset-left));background:var(--panel);border-top:1px solid var(--line);z-index:10}
+#main-tabs{position:fixed;bottom:0;left:0;right:0;margin-inline:auto;width:100%;max-width:680px;display:flex;gap:4px;padding:8px max(12px,env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 8px) max(12px,env(safe-area-inset-left));background:var(--panel);border-top:1px solid var(--line);z-index:10}
 #main-tabs button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-height:52px;padding:6px;border:0;background:transparent;color:var(--muted);font-size:12px;font-weight:600}
 #main-tabs button>span{font-size:24px;line-height:26px}#main-tabs button[aria-current=page]{color:var(--accent);background:var(--soft)}
 fieldset{border:0;padding:0;margin:18px 0}legend{font-size:14px;font-weight:650}.context-options{display:flex;gap:16px;flex-wrap:wrap}.context-options label{display:flex;align-items:center;gap:8px;margin:0;min-height:48px;font-weight:400}.context-options input[type=radio]{display:inline;width:20px;min-height:20px;accent-color:var(--accent)}.picker-help{font-size:13px;margin:10px 0 0}.picker-escape{font-size:14px;min-height:44px;margin-top:4px;padding:8px 0}.section-intro{margin-left:16px}.deck-organization .muted{font-size:13px}
