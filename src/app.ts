@@ -1,3 +1,4 @@
+import {MotionSystem,type MotionIdentity} from './motion.js';
 import {RecentCards} from './recent-cards.js';
 import {loadRecentCards,saveRecentCards} from './storage.js';
 import {prepareCardImport,mappedCards,MAX_IMPORT_BYTES,type CardImportFormat,type CardImportTable,type ColumnMapping} from './card-import.js';
@@ -34,20 +35,7 @@ import { AudioProbe } from './audio.js';
 import { Sensors } from './sensors.js';
 const app = document.querySelector<HTMLElement>('#app')!;
 const notice = document.querySelector<HTMLElement>('#notice')!;
-// Navigation decoration only: session updates and gameplay never start transitions.
-const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
-let navigationAnimation:Animation|undefined;
-let flipAnimation:Animation|undefined;
-reducedMotion.addEventListener('change',()=>{navigationAnimation?.cancel();flipAnimation?.cancel();});
-function animateNavigation(kind:'forward'|'back'|'tab-left'|'tab-right'):void {
-  navigationAnimation?.cancel();
-  if(reducedMotion.matches||typeof app.animate!=='function')return;
-  const offset=kind==='forward'?'translateY(10px)':kind==='back'?'translateY(-6px)':`translateX(${kind==='tab-right'?14:-14}px)`;
-  navigationAnimation=app.animate([
-    {opacity:.6,transform:offset},
-    {opacity:1,transform:'translate(0,0)'}
-  ],{duration:180,easing:'cubic-bezier(.2,.8,.2,1)'});
-}
+const motion=new MotionSystem();
 
 const audio = new AudioProbe();
 const sensors = new Sensors();
@@ -74,7 +62,7 @@ let preferences=defaultPreferences();
 let safetySeen=true; // Wait for the local flag before offering first-run help.
 const safetyPlatform=mobilePlatform(navigator.userAgent,navigator.maxTouchPoints);
 function openSafety():void {
-  mountSafetyTutorial(safetyPlatform,async()=>{await saveSafetySeen(true);safetySeen=true;},message=>say(message));
+  mountSafetyTutorial(safetyPlatform,async()=>{await saveSafetySeen(true);safetySeen=true;},message=>say(message),motion);
 }
 refreshViewport();
 const libraryFilters:Record<'regular'|'taboo',LibraryFilter>={regular:{search:'',context:'all',mode:'all'},taboo:{search:'',context:'all',mode:'all'}};
@@ -91,7 +79,6 @@ let section:'play'|'work'|'link'|'decks'='play';
 let stopMultiplayer:(()=>void)|undefined;
 let stopPacks:(()=>void)|undefined;
 let packGeneration=0;
-let flipping=false;
 let stopAudience:(()=>void)|undefined;
 const tvCode=new URL(location.href).searchParams.get('tv'),tvSecret=new URLSearchParams(location.hash.slice(1)).get('display');
 if(new URL(location.href).searchParams.has('room')){section='link';route='link';}
@@ -205,9 +192,18 @@ function picker(): string {
 function organization(d:Deck|TabooDeck,format:'regular'|'taboo'):string {
   return `<details class="panel deck-organization"><summary>Deck organization · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</summary><form id="organization-form" data-format="${format}"><fieldset><legend>Best suited for</legend><div class="context-options">${['play','work','both'].map(c=>`<label><input type="radio" name="deckContext" value="${c}" ${d.deckContext===c?'checked':''}> ${c==='both'?'Both':c==='play'?'Play':'Work'}</label>`).join('')}</div></fieldset><fieldset><legend>Available in</legend>${MODES.filter(m=>m.format===format).map(m=>`<label class="check"><input type="checkbox" name="compatibleModes" value="${m.id}" ${d.compatibleModes.includes(m.id)?'checked':''} ${m.id==='lookup'&&d.cards.length!==54?'disabled':''}> ${m.title}${m.id==='lookup'&&d.cards.length!==54?' — requires exactly 54 cards':''}</label>`).join('')}</fieldset><p class="muted">Context recommends decks; it never restricts access. Unchecked modes can still find this deck with Show All Decks when its card format and size are valid. Jenga requires 54 cards; an existing assignment stays saved but is unavailable at other sizes.${format==='taboo'?' Taboo cards require five forbidden words and use their separate editor.':''}</p><button class="primary full">Save Organization</button></form></details>`;
 }
+function motionIdentity():MotionIdentity {
+  let card='';
+  if(route==='flashcards'&&study)card=`${selected}:${study.index}:${study.side}:${study.text}`;
+  else if(route==='prompts'&&promptDraw)card=`${promptDraw.deck.id}:${promptDraw.card.id}`;
+  else if(route==='lookup'&&lookupIndex!==null)card=`${selected}:${lookupIndex}`;
+  else if(['catchphrase','headbands','taboo'].includes(route)&&round)card=`${route==='taboo'?tabooSelected:selected}:${round.current.id}`;
+  return {screen:route+(['editor','taboo-editor'].includes(route)?':'+(route==='editor'?selected:tabooSelected):''),section,card,phase:round?.phase};
+}
 function render(): void {
   if(tvCode&&tvSecret){if(!stopAudience){document.querySelector<HTMLElement>('header')!.hidden=true;document.querySelector<HTMLElement>('#main-tabs')!.hidden=true;document.querySelector<HTMLElement>('footer')!.hidden=true;stopAudience=mountAudience(app,tvCode,tvSecret);}return;}
-  navigationAnimation?.cancel();
+  const frame=motion.before(app,motionIdentity());
+  try {
   if(route!=='link'){stopMultiplayer?.();stopMultiplayer=undefined;}
   if(route!=='game-decks'){stopPacks?.();stopPacks=undefined;packGeneration++;}
   const active=document.activeElement instanceof HTMLElement && app.contains(document.activeElement)?document.activeElement:undefined;
@@ -233,8 +229,8 @@ function render(): void {
   document.querySelector<HTMLButtonElement>('#settings-button')!.hidden=route==='settings' || !!loadFailure;
   document.querySelector<HTMLElement>('footer')!.hidden=!['settings','lab'].includes(route);
   if(loadFailure && route!=='backups') { renderStorageError(); return; }
-  if(route==='link'){if(!stopMultiplayer){app.innerHTML='<div id=multiplayer class=multiplayer><p id=room-status class=muted role=status aria-live=polite></p><div id=room-content></div></div>';stopMultiplayer=mountMultiplayer(app.querySelector('#room-content')!,app.querySelector('#room-status')!,library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)).map(d=>({id:d.id,name:d.name,items:d.cards.map(c=>c.text)})),library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)),()=>navigate('game-decks'));}}
-  else if(route==='game-decks'){if(!stopPacks){const generation=++packGeneration;app.innerHTML='<div class=multiplayer><div id=pack-content><p class=muted>Loading Game Decks…</p></div></div>';stopPacks=()=>{};void loadPacks().then(packs=>{if(route!=='game-decks'||generation!==packGeneration)return;stopPacks=mountPackEditor(app.querySelector('#pack-content')!,notice,packs,()=>navigate('library'),'Back to Deck Library');}).catch(error=>{if(route==='game-decks'&&generation===packGeneration)say(String(error));});}}
+  if(route==='link'){if(!stopMultiplayer){app.innerHTML='<div id=multiplayer class=multiplayer><p id=room-status class=muted role=status aria-live=polite></p><div id=room-content></div></div>';stopMultiplayer=mountMultiplayer(app.querySelector('#room-content')!,app.querySelector('#room-status')!,library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)).map(d=>({id:d.id,name:d.name,items:d.cards.map(c=>c.text)})),library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)),()=>navigate('game-decks'),motion);}}
+  else if(route==='game-decks'){if(!stopPacks){const generation=++packGeneration;app.innerHTML='<div class=multiplayer><div id=pack-content><p class=muted>Loading Game Decks…</p></div></div>';stopPacks=()=>{};void loadPacks().then(packs=>{if(route!=='game-decks'||generation!==packGeneration)return;stopPacks=mountPackEditor(app.querySelector('#pack-content')!,notice,packs,()=>navigate('library'),'Back to Deck Library',motion);}).catch(error=>{if(route==='game-decks'&&generation===packGeneration)say(String(error));});}}
   else if(route==='home') renderHome();
   else if(route==='library') renderLibrary();
   else if(route==='editor') renderEditor();
@@ -253,6 +249,7 @@ function render(): void {
     const replacement=focusId?document.getElementById(focusId):focusAction?Array.from(app.querySelectorAll<HTMLElement>('[data-action]')).find(el=>el.dataset.action===focusAction):undefined;
     (replacement && !replacement.hidden && !(replacement instanceof HTMLButtonElement && replacement.disabled)?replacement:app).focus({preventScroll:true});
   }
+  } finally { motion.after(app,frame); }
 }
 function renderHome(): void {
   const modes=section==='work'?MODES:MODES.filter(m=>m.play);
@@ -432,7 +429,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.21.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.22.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <section class="panel"><h2>Device Handoff Safety</h2><p class="muted">Tips for restricting your phone to DeckForge before sharing it.</p>${button('device-safety','Review Safety Tutorial')}${button('reset-safety','Reset First-Run Tutorial','quiet full')}</section><p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
@@ -458,17 +455,13 @@ async function mutate(change: (next: Library)=>void, checkpoint=false): Promise<
   } finally { saving=false; }
 }
 function navigate(target: string,nextSection?:typeof section): void {
-  const previousSection=section,previousRoute=route;
   if((calibrating || (round && round.phase!=='ended')) && !confirm('Leave and end the current round?')) return;
   if(nextSection)section=nextSection;
   if(['library','editor','taboo-library','taboo-editor','game-decks'].includes(target))section='decks';
   if(MODES.some(m=>m.id===target)){launchContext=(target==='lookup'||target==='flashcards'||section==='work')?'work':'play';section=launchContext;showAllDecks=false;selected='';tabooSelected='';promptIds=undefined;promptSearch='';promptActivityMode='none';promptFixed={};promptSession=undefined;}
-  gameGeneration++;flipAnimation?.cancel();calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
+  gameGeneration++;motion.cancel();calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
   study=undefined;presenting=false;presentationControls=true;expandedCards=false;pendingImport=undefined;bulkDraft='';resetBulkSource();revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); app.focus({preventScroll:true});window.scrollTo({top:0});
-  if(previousSection!==section){
-    const tabs=['play','work','link','decks'];
-    animateNavigation(tabs.indexOf(section)>tabs.indexOf(previousSection)?'tab-right':'tab-left');
-  }else if(previousRoute!==route)animateNavigation(['home','library','taboo-library'].includes(route)?'back':'forward');
+
 }
 function openEntry(next: typeof entry): void {
   pendingImport=undefined;bulkDraft='';resetBulkSource();skipImportDuplicates=false;confirmActivityDelete=false;entry=next; render(); app.querySelector<HTMLElement>('form:not(#organization-form) input,form:not(#organization-form) textarea')?.focus();
@@ -491,7 +484,7 @@ async function storageProtection(request: boolean): Promise<void> {
   if(route==='settings' || route==='lab') render();
 }
 async function action(name: string): Promise<void> {
-  if(flipping&&name.startsWith('study-'))return;
+  motion.intent(name);
   const d=deck();
   if(name.startsWith('award-')){const index=name==='award-none'?null:Number(name.slice(6));if(match?.award(index))render();return;}
   switch(name) {
@@ -501,15 +494,7 @@ async function action(name: string): Promise<void> {
     case 'study-setup':study=undefined;say('');render();break;
     case 'study-prev':case 'study-next':if(study){study.move(name==='study-next'?1:-1);say('');render();}break;
     case 'study-shuffle':if(study){study.shuffle();render();say('Study order shuffled. Your deck order is unchanged.');}break;
-    case 'study-flip':if(study&&!flipping){
-      const session=study,generation=gameGeneration,card=app.querySelector<HTMLElement>('.study-card');flipping=true;
-      try{
-        if(!reducedMotion.matches&&card?.animate){flipAnimation=card.animate([{transform:'perspective(1000px) rotateY(0deg)'},{transform:'perspective(1000px) rotateY(90deg)'}],{duration:150,easing:'ease-in',fill:'forwards'});await flipAnimation.finished.catch(()=>{});}
-        if(study!==session||generation!==gameGeneration||route!=='flashcards')break;
-        session.flip();render();const face=app.querySelector<HTMLElement>('.study-card');
-        if(!reducedMotion.matches&&face?.animate){flipAnimation=face.animate([{transform:'perspective(1000px) rotateY(-90deg)'},{transform:'perspective(1000px) rotateY(0deg)'}],{duration:190,easing:'ease-out'});await flipAnimation.finished.catch(()=>{});}
-      }finally{flipAnimation=undefined;flipping=false;}
-    }break;
+    case 'study-flip':if(study){motion.flip(study.flipped);study.flip();render();}break;
     case 'expand-cards':expandedCards=!expandedCards;cardPage=0;render();break;
     case 'presentation':presenting=!presenting;presentationControls=true;render();if(!presenting&&document.fullscreenElement)void document.exitFullscreen().catch(()=>{});break;
     case 'tv-fullscreen':if(document.documentElement.requestFullscreen)void document.documentElement.requestFullscreen().catch(()=>say('Use landscape and your device’s screen-mirroring controls.'));else say('Use landscape and your device’s screen-mirroring controls.');break;
@@ -582,7 +567,7 @@ async function action(name: string): Promise<void> {
     case 'finish-game': navigate(sectionRoot(section));break;
     case 'forehead-ready':placement.confirmPlacement();say('Keep the phone steady at your forehead.');break;
     case 'use-buttons': if(!preparing){gameAudio.stopCountdown();placement.reset();useTilt=false;calibrating=false;sensors.stop();tilt.reset();beginHeadbands();}break;
-    case 'cancel-headbands': placement.reset();gameGeneration++;flipAnimation?.cancel();calibrating=false;preparing=false;sensors.stop();tilt.reset();gameAudio.stop();releaseWake();render();break;
+    case 'cancel-headbands': placement.reset();gameGeneration++;motion.cancel();calibrating=false;preparing=false;sensors.stop();tilt.reset();gameAudio.stop();releaseWake();render();break;
     case 'reload': location.reload(); break;
     case 'check-update': {
       if(!('serviceWorker' in navigator)) throw new Error('Updates need a secure browser connection.');
@@ -744,9 +729,9 @@ document.addEventListener('click',event=>{
   if(!el.closest('.swipe-deck'))revealDeck('');
   if(el.dataset.tab){const tab=el.dataset.tab as typeof section;navigate(sectionRoot(tab),tab);}
   else if(el.dataset.route) { if(el.dataset.route==='backups') void action('backups').catch(error=>say(String(error)));else navigate(el.dataset.route); }
-  else if(el.dataset.tabooDeck){tabooSelected=el.dataset.tabooDeck;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';editingCard=undefined;route='taboo-editor';section='decks';render();app.focus({preventScroll:true});window.scrollTo({top:0});animateNavigation('forward');}
+  else if(el.dataset.tabooDeck){tabooSelected=el.dataset.tabooDeck;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';editingCard=undefined;route='taboo-editor';section='decks';render();app.focus({preventScroll:true});window.scrollTo({top:0});}
   else if(el.dataset.tabooEdit){editingCard=el.dataset.tabooEdit;openEntry('card');document.querySelector('#taboo-card-form')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
-  else if(el.dataset.deck) {editorSection='cards';editingActivity=undefined;activityPage=0;selected=el.dataset.deck;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';editingCard=undefined;route='editor';section='decks';say('');render();app.focus({preventScroll:true});window.scrollTo({top:0});animateNavigation('forward');}
+  else if(el.dataset.deck) {editorSection='cards';editingActivity=undefined;activityPage=0;selected=el.dataset.deck;cardPage=0;expandedCards=false;pendingImport=undefined;entry='';editingCard=undefined;route='editor';section='decks';say('');render();app.focus({preventScroll:true});window.scrollTo({top:0});}
   else if(el.dataset.activityEdit){editingActivity=el.dataset.activityEdit;openEntry('activity');document.querySelector('#activity-form')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
   else if(el.dataset.activityMove||el.dataset.cardMove){const d=deck(),id=el.dataset.activityMove??el.dataset.cardMove,direction=el.dataset.direction==='-1'?-1:1;if(d&&id&&!entry)void mutate(next=>{const target=next.decks.find(x=>x.id===d.id)!;if(el.dataset.activityMove)target.activities=moveItem(target.activities,id,direction);else target.cards=moveItem(target.cards,id,direction);}).then(()=>say('Order saved.')).catch(error=>say(String(error)));}
   else if(el.dataset.edit) {editingCard=el.dataset.edit;openEntry('card');document.querySelector('#card-form')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
