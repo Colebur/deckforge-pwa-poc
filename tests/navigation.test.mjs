@@ -23,7 +23,7 @@ test('context ranks within compatibility groups, alphabetically within context, 
  assert.deepEqual(modeDecks(decks,'headbands','work').visible,[]);assert.equal(modeDecks(decks,'headbands','work',true).visible.length,5);
 });
 test('Play excludes lookup; Work uses the same ordered catalog with lookup first; tab roots are existing screens',()=>{
- assert.equal(MODES[0].id,'lookup');assert.ok(!MODES.filter(m=>m.play).some(m=>m.id==='lookup'));assert.equal(new Set(MODES.map(m=>m.id)).size,6);assert.equal(sectionRoot('decks'),'library');assert.equal(sectionRoot('work'),'home');assert.equal(sectionRoot('play'),'home');
+ assert.equal(MODES[0].id,'lookup');assert.equal(MODES.find(m=>m.id==='prompts').play,true);assert.ok(!MODES.filter(m=>m.play).some(m=>m.id==='lookup'));assert.equal(new Set(MODES.map(m=>m.id)).size,6);assert.equal(sectionRoot('decks'),'library');assert.equal(sectionRoot('work'),'home');assert.equal(sectionRoot('play'),'home');
 });
 
 test('Prompt Picker combined draws use exactly the visible compatible or expanded pool',()=>{

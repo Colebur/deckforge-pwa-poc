@@ -8,7 +8,7 @@ const deck=(id,n)=>({id,name:id,deckContext:'work',compatibleModes:['lookup','pr
 test('Jenga structural gate excludes 53/55 even with Show All and preserves dormant assignment',()=>{
  const decks=[deck('a',53),deck('b',54),deck('c',55)];assert.deepEqual(modeDecks(decks,'lookup','work',true).visible.map(d=>d.id),['b']);
  const library={decks,duration:90,probe:null};assert.deepEqual(decodeState(encodeState(library)),library);
- assert.equal(MODES[0].title,'Jenga');assert.equal(MODES[1].id,'prompts');assert.ok(!MODES.filter(m=>m.play).some(m=>['lookup','prompts'].includes(m.id)));
+ assert.equal(MODES[0].title,'Jenga');assert.equal(MODES[1].id,'prompts');assert.ok(!MODES.filter(m=>m.play).some(m=>m.id==='lookup'));
 });
 test('v5 lookup migration preserves 54 assignment and removes only invalid lookup assignments',()=>{
  const decks=[deck('a',53),deck('b',54),deck('c',55)],source={decks,duration:90,probe:'keep'},before=structuredClone(source);
