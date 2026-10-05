@@ -694,7 +694,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
   }
 }
 app.addEventListener('submit',event=>{if((event.target as HTMLElement).closest('.multiplayer'))return;event.preventDefault();if(event.target instanceof HTMLFormElement) void submit(event.target).catch(error=>say(`Could not save: ${String(error)}`));});
-app.addEventListener('input',event=>{if(event.target instanceof HTMLInputElement&&event.target.id==='card-search'){
+app.addEventListener('input',event=>{if(event.target instanceof HTMLInputElement&&event.target.id==='card-search'&&(route==='editor'||route==='taboo-editor')){
   cardSearch=event.target.value;cardPage=0;
   const d=route==='taboo-editor'?tabooDeck():deck();
   if(d)app.querySelector('#card-search-results')!.innerHTML=editorCardResults(d);
