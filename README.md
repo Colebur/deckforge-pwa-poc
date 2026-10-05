@@ -139,3 +139,8 @@ Catchphrase and Taboo prepare each new round with a three-second countdown befor
 ## Rules and optional variations
 
 One-device mode setup offers **How to play** and **Other ways to play** popups. Older rule dropdowns have been removed. Catchphrase and Heads Up standard clue guidance excludes the answer and any part of it, gestures, sound effects, word/letter counts and initial-letter hints. Optional house-rule ideas explicitly identify exceptions; they do not automatically change scoring, timers or controls.
+
+
+## Search cards within a deck
+
+Regular, Taboo and Game Deck editors include Search cards above the card list. Search matches fronts, optional backs, forbidden words, questions, categories, answers and alternative answers. Matching ignores case and accents; each search word must occur somewhere in the same card. Results keep original positions and editing targets. Pagination and Expand All operate on matching results. Clear the search field to restore every card. Search is temporary and local; it does not alter decks or game draws.
