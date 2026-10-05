@@ -9,7 +9,7 @@ export function teamNames(names: string[]): string[] {
 }
 export function roundSeconds(setting: number, random=Math.random): number {
   if(!Number.isInteger(setting) || (setting!==0 && setting!==5 && (setting<15 || setting>300))) throw new Error('Choose Random or a timer in 15-second steps.');
-  return setting===0 ? 30+Math.floor(Math.min(0.999999999,Math.max(0,random()))*61) : setting;
+  return setting===0 ? 60+Math.floor(Math.min(0.999999999,Math.max(0,random()))*61) : setting;
 }
 export class TeamGame {
   readonly teams: string[];

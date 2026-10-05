@@ -4,7 +4,7 @@ import {loadRecentCards,saveRecentCards} from './storage.js';
 import {prepareCardImport,mappedCards,MAX_IMPORT_BYTES,type CardImportFormat,type CardImportTable,type ColumnMapping} from './card-import.js';
 import {reviewCardItems} from './editor-tools.js';
 import {mobilePlatform,shouldOfferSafety,mountSafetyTutorial} from './device-safety.js';
-import {refreshViewport} from './viewport.js';
+import {refreshViewport,mainTabsVisible} from './viewport.js';
 import {loadSafetySeen,saveSafetySeen} from './storage.js';
 import {exportComplete,parseComplete,restoreComplete,type CompleteData,type CompletePreview} from './complete-backup.js';
 import {snapshotComplete,saveComplete,recoverCompleteStartup} from './complete-storage.js';
@@ -43,6 +43,7 @@ const gameAudio=new GameAudio();
 const tilt=new TiltDetector(false);
 const placement=new HeadbandsSetup();
 let placementLabel='';
+let linkBack:(()=>void)|undefined;
 const sideways=():boolean=>matchMedia('(orientation: landscape)').matches;
 let library: Library;
 let recentWrites:Promise<void>=Promise.resolve();
@@ -216,8 +217,9 @@ function render(): void {
   document.body.dataset.context=section;
   document.body.classList.toggle('playing',playing);
   document.body.classList.toggle('home-screen',route==='home');
-  document.body.classList.toggle('has-tabs',!playing);
-  const tabs=document.querySelector<HTMLElement>('#main-tabs')!;tabs.hidden=playing;
+  const showTabs=mainTabsVisible(route)&&!playing;
+  document.body.classList.toggle('has-tabs',showTabs);
+  const tabs=document.querySelector<HTMLElement>('#main-tabs')!;tabs.hidden=!showTabs;
   tabs.innerHTML=[['play','▶','Play'],['work','▦','Work'],['link','⇄','Link'],['decks','▱','Decks']].map(([id,icon,title])=>`<button data-tab="${id}" ${section===id?'aria-current="page"':''}><span aria-hidden="true">${icon}</span>${title}</button>`).join('');
   document.body.classList.toggle('lookup-screen',route==='lookup'&&availableDecks().visible.length>0);
   document.querySelector<HTMLButtonElement>('#rename-button')!.hidden=!['editor','taboo-editor'].includes(route)||!!loadFailure;
@@ -229,7 +231,7 @@ function render(): void {
   document.querySelector<HTMLButtonElement>('#settings-button')!.hidden=route==='settings' || !!loadFailure;
   document.querySelector<HTMLElement>('footer')!.hidden=!['settings','lab'].includes(route);
   if(loadFailure && route!=='backups') { renderStorageError(); return; }
-  if(route==='link'){if(!stopMultiplayer){app.innerHTML='<div id=multiplayer class=multiplayer><p id=room-status class=muted role=status aria-live=polite></p><div id=room-content></div></div>';stopMultiplayer=mountMultiplayer(app.querySelector('#room-content')!,app.querySelector('#room-status')!,library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)).map(d=>({id:d.id,name:d.name,items:d.cards.map(c=>c.text)})),library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)),()=>navigate('game-decks'),motion);}}
+  if(route==='link'){if(!stopMultiplayer){app.innerHTML='<div id=multiplayer class=multiplayer><p id=room-status class=muted role=status aria-live=polite></p><div id=room-content></div></div>';stopMultiplayer=mountMultiplayer(app.querySelector('#room-content')!,app.querySelector('#room-status')!,library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)).map(d=>({id:d.id,name:d.name,items:d.cards.map(c=>c.text)})),library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)),()=>navigate('game-decks'),motion,(detail,back)=>{linkBack=back;const show=mainTabsVisible('link',detail);document.querySelector<HTMLElement>('#main-tabs')!.hidden=!show;document.body.classList.toggle('has-tabs',show);const button=document.querySelector<HTMLButtonElement>('#home-button')!;button.hidden=!detail;button.dataset.action='link-back';button.setAttribute('aria-label','Back to Link');});}}
   else if(route==='game-decks'){if(!stopPacks){const generation=++packGeneration;app.innerHTML='<div class=multiplayer><div id=pack-content><p class=muted>Loading Game Decks…</p></div></div>';stopPacks=()=>{};void loadPacks().then(packs=>{if(route!=='game-decks'||generation!==packGeneration)return;stopPacks=mountPackEditor(app.querySelector('#pack-content')!,notice,packs,()=>navigate('library'),'Back to Deck Library',motion);}).catch(error=>{if(route==='game-decks'&&generation===packGeneration)say(String(error));});}}
   else if(route==='home') renderHome();
   else if(route==='library') renderLibrary();
@@ -362,7 +364,7 @@ function renderPrompts(): void {
 }
 function durationPicker(value:number):string {
   const choices=[...TIMER_CHOICES];if(!choices.includes(value))choices.push(value);
-  return choices.map(n=>`<option value="${n}" ${n===value?'selected':''}>${n===0?'Random (30–90 seconds)':`${n} seconds`}</option>`).join('');
+  return choices.map(n=>`<option value="${n}" ${n===value?'selected':''}>${n===0?'Random (60–120 seconds)':`${n} seconds`}</option>`).join('');
 }
 function scores():string {
   return match?`<section class="list-panel scoreboard">${match.teams.map((name,i)=>`<div class="card-row"><span class="card-text">${esc(name)}</span><strong>${match!.scores[i]}</strong></div>`).join('')}</section>`:'';
@@ -429,7 +431,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.22.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.23.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <section class="panel"><h2>Device Handoff Safety</h2><p class="muted">Tips for restricting your phone to DeckForge before sharing it.</p>${button('device-safety','Review Safety Tutorial')}${button('reset-safety','Reset First-Run Tutorial','quiet full')}</section><p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
@@ -523,6 +525,7 @@ async function action(name: string): Promise<void> {
     case 'settings': navigate('settings'); break;
     case 'backups': restorePoint=await recovery();backupError='';try{backupData=await snapshotComplete();completePoint=await completeRecovery();}catch(error){backupData=undefined;backupError=String(error);}navigate('backups');break;
     case 'back': navigate('library'); break;
+    case 'link-back':linkBack?.();break;
     case 'decks-tab':navigate('library','decks');break;
     case 'toggle-all-decks':showAllDecks=!showAllDecks;render();break;
     case 'new-deck': openEntry('new-deck'); break;
