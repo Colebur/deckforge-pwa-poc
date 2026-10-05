@@ -4,14 +4,14 @@ A local-first deck toolkit for party games, group activities and facilitation. C
 
 ## Navigation and games
 
-- **Play:** Catchphrase, Headbands and Taboo.
+- **Play:** Catchphrase, Heads Up and Taboo.
 - **Work:** Jenga and Prompt Picker first, followed by the same party game engines.
 - **Link:** Create or join temporary multiplayer Categories rooms.
 - **Decks:** one regular deck library, with a separate secondary library for Taboo cards.
 
 Regular decks contain ordered cards and Activities. Context (`play`, `work`, `both`) recommends decks without restricting access. Intended game compatibility organizes pickers; Show All Decks offers an escape hatch when the card format and size fit the game. Jenga requires exactly 54 cards in block-number order.
 
-Catchphrase supports saved teams, Random (60–120 seconds) or fixed timers in 15-second increments, hidden countdown, accelerating ticks and an end buzzer. Headbands supports manual answers or permission-based motion controls with guided landscape placement, a distinct three-second preparation chime and calibrated tilts. Taboo uses an answer plus five forbidden words and team scoring. Prompt Picker supports a session-only selection of multiple decks, choosing a deck uniformly before a card.
+Catchphrase supports saved teams, Random (60–120 seconds) or fixed timers in 15-second increments, hidden countdown, accelerating ticks and an end buzzer. Heads Up supports manual answers or permission-based motion controls with guided landscape placement, a distinct three-second preparation chime and calibrated tilts. Taboo uses an answer plus five forbidden words and team scoring. Prompt Picker supports a session-only selection of multiple decks, choosing a deck uniformly before a card.
 
 ## Deck editing
 
@@ -64,7 +64,7 @@ Restore defaults to adding independent copies. Replacement requires an explicit 
 4. Paste numbered lines with one duplicate. Review without saving, change a line and verify the review disappears. Review again; compare keeping duplicates with Skip duplicates.
 5. Add/edit an Activity containing `{card}` twice and `{player}`. Preview against different cards; verify literal replacement and unknown-placeholder retention. Save, close and reopen.
 6. In Work, draw a Jenga/Prompt Picker card. Enter Presentation View, hide/show controls, reroll a Random Activity, and exit. The card should remain unchanged by reroll or view toggles. Test portrait and landscape safe areas.
-7. Check normal deck editing/reordering and all existing game controls. Confirm Catchphrase expiry/awards, Headbands manual/tilt controls and Taboo results still work.
+7. Check normal deck editing/reordering and all existing game controls. Confirm Catchphrase expiry/awards, Heads Up manual/tilt controls and Taboo results still work.
 8. Once cached, repeat a cold launch, draw/edit, audio and sensor trial offline. Use Device Tests for permission/support diagnostics. Confirm saved data after reopening.
 9. Check larger text, VoiceOver reading order, bottom controls and Home Screen behavior on a physical device.
 
@@ -98,7 +98,7 @@ After updating to 0.12.0, try Play → Work → Decks and back, open a deck and 
 
 Decks and Taboo Decks support name search, context/compatibility filters, and Name A–Z or Most cards first sorting. Equal card counts remain alphabetical. Labels show intended modes. Clearing filters restores alphabetical order; these UI choices do not change saved card order.
 
-Catchphrase reviews advanced cards and the last card without changing its one-point team rule. Taboo reviews Correct/Passed/Taboo outcomes. Headbands Play Again starts with the same choices and repeats motion preparation when enabled. All finished timed games offer Change Deck or Settings; changing setup starts a new match rather than carrying team totals. Paused screens explain that time is stopped. Reviews remain session-only.
+Catchphrase reviews advanced cards and the last card without changing its one-point team rule. Taboo reviews Correct/Passed/Taboo outcomes. Heads Up Play Again starts with the same choices and repeats motion preparation when enabled. All finished timed games offer Change Deck or Settings; changing setup starts a new match rather than carrying team totals. Paused screens explain that time is stopped. Reviews remain session-only.
 
 See [architecture](ARCHITECTURE.md) and the [constitution/readiness review and device checklist](PROJECT_READINESS.md). The license remains undecided; no open-source license is applied by this release.
 
@@ -121,3 +121,5 @@ In version 0.19.0, Backups → Back Up Everything includes regular/Taboo decks, 
 ## Navigation and rotation
 
 Bottom tabs appear only on the Play, Work, Deck Library and Link landing screens. Game setup, gameplay, editors, Settings and Link room details use Back navigation. In a Link room, Back leaves temporarily and preserves same-tab recovery. Menus remain usable in landscape; gameplay keeps its existing landscape layouts. Viewport refreshes settle rotation events before writing a changed height, while retaining keyboard protection.
+
+Catchphrase round-end team buttons show running totals and award one point; Next Round appears after the decision. Heads Up keeps Play Again on its primary result screen. Detailed reviews and secondary options are expandable below. The stored `headbands` mode identifier remains unchanged for compatibility.

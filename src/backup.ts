@@ -29,7 +29,7 @@ export function validateLibrary(value: unknown, legacy=false): Library {
   });
   const result: Library={decks, duration: value.duration, probe: value.probe};
   if(value.teams!==undefined){if(!Array.isArray(value.teams)||!value.teams.every(v=>typeof v==='string'))throw new Error('Invalid team settings.');result.teams=teamNames(value.teams);}
-  if(value.headbandsDuration!==undefined){if(typeof value.headbandsDuration!=='number'||!TIMER_CHOICES.includes(value.headbandsDuration))throw new Error('Invalid Headbands timer.');result.headbandsDuration=value.headbandsDuration;}
+  if(value.headbandsDuration!==undefined){if(typeof value.headbandsDuration!=='number'||!TIMER_CHOICES.includes(value.headbandsDuration))throw new Error('Invalid Heads Up timer.');result.headbandsDuration=value.headbandsDuration;}
   if(value.tabooDecks!==undefined){
     if(!Array.isArray(value.tabooDecks))throw new Error('Invalid Taboo collection.');
     const ids=new Set<string>();

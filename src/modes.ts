@@ -7,7 +7,7 @@ export const MODES=[
   {id:'prompts',title:'Prompt Picker',detail:'Draw from one or more decks, with optional Activities.',icon:'✦',format:'regular',play:true},
   {id:'flashcards',title:'Flashcards',detail:'Flip through cards to study and review both sides.',icon:'▤',format:'regular',play:false},
   {id:'catchphrase',title:'Catchphrase',detail:'Give clues. Guess the word. Pass the phone.',icon:'◷',format:'regular',play:true},
-  {id:'headbands',title:'Headbands',detail:'Hold it at your forehead. Tilt to answer.',icon:'▱',format:'regular',play:true},
+  {id:'headbands',title:'Heads Up',detail:'Hold it at your forehead. Tilt to answer.',icon:'▱',format:'regular',play:true},
   {id:'taboo',title:'Taboo',detail:'Describe the word. Avoid the forbidden words.',icon:'◇',format:'taboo',play:true},
 ] as const;
 export type ModeId=typeof MODES[number]['id'];

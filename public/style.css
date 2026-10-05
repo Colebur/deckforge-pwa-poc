@@ -128,3 +128,14 @@ body{min-height:100vh;min-height:max(100dvh,var(--shell-height,0px))}
 .safety-dialog{--accent:#1769d2;--soft:#e9f1fd;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:24px;width:calc(100% - 28px);max-width:480px;max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 28px);padding:22px;overflow-y:auto;overscroll-behavior:contain}
 .safety-dialog::backdrop{background:#10182880}.safety-icon{display:block;color:var(--accent);font-size:26px;margin-bottom:12px}.safety-dialog h2{font-size:24px}.safety-subtitle{color:var(--accent);font-weight:600}.safety-dialog p,.safety-dialog li{font-size:14px;line-height:1.45}.safety-dialog ol{padding-left:22px}.safety-dialog .muted{font-size:12px}.safety-dialog #safety-error:empty{display:none}
 @media(prefers-color-scheme:dark){html{--page-background:#000}.safety-dialog{--accent:#409cff;--soft:#102b46}}
+
+/* Primary round-end actions stay within one screen; reviews expand below it. */
+body.playing .round-end{height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 44px);min-height:0;flex:none;display:flex;flex-direction:column;gap:8px}
+.round-end>.game-status{flex:none}.round-end>.prompt{flex:1;min-height:0;padding:8px 0;font-size:clamp(30px,7vw,62px)}
+.end-summary{text-align:center;color:var(--muted);font-size:15px;margin:0;flex:none}
+.end-controls{flex:none}.end-team-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.end-team-grid button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:60px;padding:8px;min-width:0}
+.end-team-grid button>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:15px}
+.end-team-grid strong{font-size:16px}.end-team-grid small{font-size:12px;color:inherit;font-weight:400}.end-team-grid .settled-team{opacity:1;color:var(--accent);background:var(--soft);cursor:default}
+.end-controls>.full{margin-top:8px;min-height:48px}.end-secondary{display:flex;justify-content:center;gap:12px;margin-top:4px}.round-extras{margin-top:16px}
+@media(orientation:landscape){body.playing .round-end{height:calc(100dvh - max(10px,env(safe-area-inset-top)) - max(10px,env(safe-area-inset-bottom)));gap:6px}.end-team-grid{grid-template-columns:repeat(var(--team-columns,2),minmax(0,1fr))}.end-team-grid button{min-height:56px}.round-end>.prompt{font-size:clamp(30px,6vw,56px)}}
