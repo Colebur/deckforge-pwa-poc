@@ -1,3 +1,4 @@
+import {RandomCardBag,type DrawMemory} from './recent-cards.js';
 import type {DeckMetadata} from './modes.js';
 export interface Card { id: string; text: string; back?: string }
 export interface Activity { id: string; text: string; createdAt: string }
@@ -48,13 +49,13 @@ export class Round {
   remaining: number;
   deadline: number;
   current: Card;
-  private bag: Card[] = [];
-  private lastId?: string;
+  private bag: RandomCardBag<Card>;
   private readonly cards: Card[];
-  constructor(cards: readonly Card[], duration: number, now: number) {
+  constructor(cards: readonly Card[], duration: number, now: number, memory?:DrawMemory) {
     if (!cards.length) throw new Error('Add cards before starting a round.');
     if (!Number.isFinite(duration) || duration < 5 || duration > 300) throw new Error('Choose 5–300 seconds.');
     this.cards = cards.map(card => ({...card}));
+    this.bag=new RandomCardBag(this.cards,memory);
     this.remaining = duration * 1000;
     this.deadline = now + this.remaining;
     this.current = this.draw();
@@ -79,14 +80,8 @@ export class Round {
     this.remaining=duration*1000;this.deadline=now+this.remaining;this.phase='running';this.results.length=0;this.score=0;this.passed=0;this.current=this.draw();
   }
   private draw(): Card {
-    if (!this.bag.length) {
-      this.bag = shuffled(this.cards);
-      if (this.bag.length > 1 && this.bag.at(-1)!.id === this.lastId)
-        [this.bag[0], this.bag[this.bag.length-1]] = [this.bag.at(-1)!, this.bag[0]!];
-    }
-    const next = this.bag.pop()!;
-    this.lastId = next.id;
-    return next;
+    if (!this.bag.length) this.bag.refill();
+    return this.bag.draw();
   }
 }
 
