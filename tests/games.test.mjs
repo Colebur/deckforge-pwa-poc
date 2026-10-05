@@ -7,13 +7,13 @@ import {decodeState,exportBackup,parseBackup} from '../dist/backup.js';
 const cards=Array.from({length:5},(_,i)=>({id:String(i),text:'Card '+i}));
 test('native timers, fresh random range and validated teams',()=>{
  assert.deepEqual(TIMER_CHOICES,[0,...Array.from({length:20},(_,i)=>(i+1)*15)]);
- assert.equal(roundSeconds(0,()=>0),30);assert.equal(roundSeconds(0,()=>0.9999),90);assert.equal(roundSeconds(45),45);
+ assert.equal(roundSeconds(0,()=>0),60);assert.equal(roundSeconds(0,()=>0.9999),120);assert.equal(roundSeconds(45),45);
  assert.deepEqual(teamNames([' A ','B']),['A','B']);for(const names of [['A'],['A','a'],['','B'],Array(9).fill('x')])assert.throws(()=>teamNames(names));
 });
 test('Catchphrase awards one point once, next round requires a decision, random rerolls',()=>{
- const game=new TeamGame(cards,['A','B'],0);const round=game.start(0,()=>0);assert.equal(round.remaining,30000);
- assert.equal(game.award(0),false);assert.throws(()=>game.start(1));round.tick(30000);assert.equal(game.award(4),false);assert.equal(game.award(1),true);assert.equal(game.award(1),false);assert.deepEqual(game.scores,[0,1]);
- game.start(31000,()=>0.9999);assert.equal(game.round.remaining,90000);game.round.tick(121000);assert.equal(game.award(null),true);assert.deepEqual(game.scores,[0,1]);
+ const game=new TeamGame(cards,['A','B'],0);const round=game.start(0,()=>0);assert.equal(round.remaining,60000);
+ assert.equal(game.award(0),false);assert.throws(()=>game.start(1));round.tick(60000);assert.equal(game.award(4),false);assert.equal(game.award(1),true);assert.equal(game.award(1),false);assert.deepEqual(game.scores,[0,1]);
+ game.start(61000,()=>0.9999);assert.equal(game.round.remaining,120000);game.round.tick(181000);assert.equal(game.award(null),true);assert.deepEqual(game.scores,[0,1]);
 });
 test('Headbands visits each card once, records answers, finishes deck without refill',()=>{
  const round=new HeadbandsRound(cards,60,0);while(round.phase==='running')round.answer(round.results.length%2===0,1000);
