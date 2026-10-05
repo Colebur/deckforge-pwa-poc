@@ -135,3 +135,7 @@ The Soft Shapes visual layer is isolated in `public/soft-shapes.css`; it preserv
 Welcome and Deck Library guides appear once on this device, with replay and reset controls in Settings. Each one-device mode has a How to use this mode popup. Deck editors offer Use this deck to launch compatible modes with the deck selected. Wild Card keeps the existing prompts identifier and uses the shared deck picker.
 
 Catchphrase and Taboo prepare each new round with a three-second countdown before drawing a card or starting the game clock. Preparation chimes follow Timer sound. Cancel or leaving the app cancels preparation. Taboo has a compact landscape layout and results with Next Round in the primary viewport.
+
+## Rules and optional variations
+
+One-device mode setup offers **How to play** and **Other ways to play** popups. Older rule dropdowns have been removed. Catchphrase and Heads Up standard clue guidance excludes the answer and any part of it, gestures, sound effects, word/letter counts and initial-letter hints. Optional house-rule ideas explicitly identify exceptions; they do not automatically change scoring, timers or controls.
