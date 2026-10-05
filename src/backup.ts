@@ -1,3 +1,4 @@
+import {emojiMetadata} from './deck-appearance.js';
 import {metadata} from './modes.js';
 import {validateActivities} from './activities.js';
 import { type Library } from './model.js';
@@ -25,7 +26,7 @@ export function validateLibrary(value: unknown, legacy=false): Library {
       if(card.back!==undefined&&typeof card.back!=='string')throw new Error('Invalid card back. Nothing was changed.');
       return {id: card.id, text: card.text,...(typeof card.back==='string'&&card.back.trim()?{back:card.back}:{})};
     });
-    return {id: entry.id, name: entry.name, cards, activities:validateActivities(entry.activities),...regularMetadata(entry.deckContext,entry.compatibleModes,cards.length,legacy)};
+    return {id: entry.id, name: entry.name, ...emojiMetadata(entry.emoji), cards, activities:validateActivities(entry.activities),...regularMetadata(entry.deckContext,entry.compatibleModes,cards.length,legacy)};
   });
   const result: Library={decks, duration: value.duration, probe: value.probe};
   if(value.teams!==undefined){if(!Array.isArray(value.teams)||!value.teams.every(v=>typeof v==='string'))throw new Error('Invalid team settings.');result.teams=teamNames(value.teams);}
@@ -36,7 +37,7 @@ export function validateLibrary(value: unknown, legacy=false): Library {
     result.tabooDecks=value.tabooDecks.map(d=>{
       if(!record(d)||!nonblank(d.id)||!nonblank(d.name)||!Array.isArray(d.cards)||ids.has(d.id))throw new Error('Invalid or duplicate Taboo deck.');
       ids.add(d.id);const cards=new Set<string>();
-      return {id:d.id,name:d.name,...metadata(d.deckContext,d.compatibleModes,'taboo'),cards:d.cards.map(c=>{
+      return {id:d.id,name:d.name,...emojiMetadata(d.emoji),...metadata(d.deckContext,d.compatibleModes,'taboo'),cards:d.cards.map(c=>{
         if(!record(c)||!nonblank(c.id)||cards.has(c.id))throw new Error('Invalid or duplicate Taboo card.');
         cards.add(c.id);return {id:c.id,...validateTabooCard(c.text,c.forbidden)};
       })};

@@ -5,8 +5,8 @@ export function button(action:string,text:string,cls=''):string{return `<button 
 export function cardDisplay(text:string,activity?:{text:string}):string {
   return activity?`<span>${activityParts(activity.text,text).map(part=>part.kind==='card'?`<strong>${esc(part.text)}</strong>`:`<em>${esc(part.text)}</em>`).join('')}</span>`:esc(text);
 }
-export function deckOptions<T extends DeckMetadata & {id:string;name:string;cards:readonly unknown[]}>(pool:{compatible:T[];other:T[]},value:string|null,context:LaunchContext,all:boolean):string {
-  const option=(d:T)=>`<option value="${esc(d.id)}" ${d.id===value?'selected':''}>${esc(d.name)} · ${d.cards.length} cards</option>`;
+export function deckOptions<T extends DeckMetadata & {id:string;name:string;emoji?:string;cards:readonly unknown[]}>(pool:{compatible:T[];other:T[]},value:string|null,context:LaunchContext,all:boolean):string {
+  const option=(d:T)=>`<option value="${esc(d.id)}" ${d.id===value?'selected':''}>${d.emoji?esc(d.emoji)+' ':''}${esc(d.name)} · ${d.cards.length} cards</option>`;
   const labels=[['Recommended for '+(context==='play'?'Play':'Work'),context],['Suited for Both','both'],['Other compatible decks',context==='play'?'work':'play']];
   return labels.map(([label,suited])=>{const decks=pool.compatible.filter(d=>d.deckContext===suited);return decks.length?`<optgroup label="${label}">${decks.map(option).join('')}</optgroup>`:'';}).join('')+(all&&pool.other.length?`<optgroup label="Other decks — not assigned to this mode">${pool.other.map(option).join('')}</optgroup>`:'');
 }

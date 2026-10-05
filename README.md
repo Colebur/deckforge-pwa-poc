@@ -123,3 +123,9 @@ In version 0.19.0, Backups → Back Up Everything includes regular/Taboo decks, 
 Bottom tabs appear only on the Play, Work, Deck Library and Link landing screens. Game setup, gameplay, editors, Settings and Link room details use Back navigation. In a Link room, Back leaves temporarily and preserves same-tab recovery. Menus remain usable in landscape; gameplay keeps its existing landscape layouts. Viewport refreshes settle rotation events before writing a changed height, while retaining keyboard protection.
 
 Catchphrase round-end team buttons show running totals and award one point; Next Round appears after the decision. Heads Up keeps Play Again on its primary result screen. Detailed reviews and secondary options are expandable below. The stored `headbands` mode identifier remains unchanged for compatibility.
+
+## Deck appearance
+
+Open a regular or Taboo deck and expand **Deck icon**. Enter or paste one emoji using the device emoji keyboard, then choose **Save Icon**. Leave the field empty to restore the card-stack fallback. Compound emoji, skin tones, flags and keycaps are supported. Icons stay local and are included in deck and complete backups, restores and duplicates. Artwork varies by operating system. Existing decks need no migration.
+
+The Soft Shapes visual layer is isolated in `public/soft-shapes.css`; it preserves contextual tab colors and game layouts.
