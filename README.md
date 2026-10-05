@@ -5,13 +5,13 @@ A local-first deck toolkit for party games, group activities and facilitation. C
 ## Navigation and games
 
 - **Play:** Catchphrase, Heads Up and Taboo.
-- **Work:** Jenga and Prompt Picker first, followed by the same party game engines.
+- **Work:** Jenga and Wild Card first, followed by the same party game engines.
 - **Link:** Create or join temporary multiplayer Categories rooms.
 - **Decks:** one regular deck library, with a separate secondary library for Taboo cards.
 
 Regular decks contain ordered cards and Activities. Context (`play`, `work`, `both`) recommends decks without restricting access. Intended game compatibility organizes pickers; Show All Decks offers an escape hatch when the card format and size fit the game. Jenga requires exactly 54 cards in block-number order.
 
-Catchphrase supports saved teams, Random (60–120 seconds) or fixed timers in 15-second increments, hidden countdown, accelerating ticks and an end buzzer. Heads Up supports manual answers or permission-based motion controls with guided landscape placement, a distinct three-second preparation chime and calibrated tilts. Taboo uses an answer plus five forbidden words and team scoring. Prompt Picker supports a session-only selection of multiple decks, choosing a deck uniformly before a card.
+Catchphrase supports saved teams, Random (60–120 seconds) or fixed timers in 15-second increments, hidden countdown, accelerating ticks and an end buzzer. Heads Up supports manual answers or permission-based motion controls with guided landscape placement, a distinct three-second preparation chime and calibrated tilts. Taboo uses an answer plus five forbidden words and team scoring. Wild Card supports a session-only selection of multiple decks, choosing a deck uniformly before a card.
 
 ## Deck editing
 
@@ -21,11 +21,11 @@ Bulk paste now requires **Review Import → Confirm Import**. Review shows clean
 
 **Deck options → Duplicate Deck** creates an independent copy with fresh IDs and preserves content, order, Activities and organization. Duplicate prompt checks report card positions without deleting content. Card lists use 50-item pages; **Expand All** below the paging buttons shows every card, and **Show 50 at a Time** restores paging. Expanding a very large library may be slower on older devices.
 
-The Activity editor previews a draft against a selected card. `{card}` inserts literal card text at every occurrence; unknown placeholders stay unchanged. Stored templates are never changed by rendering. Jenga and Prompt Picker support None, Fixed, Random (avoiding immediate repeats), Cycle and activity-only reroll.
+The Activity editor previews a draft against a selected card. `{card}` inserts literal card text at every occurrence; unknown placeholders stay unchanged. Stored templates are never changed by rendering. Jenga and Wild Card support None, Fixed, Random (avoiding immediate repeats), Cycle and activity-only reroll.
 
 ## Work presentation
 
-After displaying a card in Jenga or Prompt Picker, choose **Presentation View** for a larger shared-screen prompt. **Hide Controls** hides navigation/answer controls; **Show Controls** remains accessible at the bottom. Exit Presentation returns to the same card and Activity. This is an optional view of the existing session, not a separate game engine. Keyboard Escape exits presentation. Activity reroll changes the instruction without changing the card.
+After displaying a card in Jenga or Wild Card, choose **Presentation View** for a larger shared-screen prompt. **Hide Controls** hides navigation/answer controls; **Show Controls** remains accessible at the bottom. Exit Presentation returns to the same card and Activity. This is an optional view of the existing session, not a separate game engine. Keyboard Escape exits presentation. Activity reroll changes the instruction without changing the card.
 
 ## Run locally
 
@@ -63,7 +63,7 @@ Restore defaults to adding independent copies. Replacement requires an explicit 
 3. Duplicate a deck. Edit the copy; confirm the original cards, Activities and organization remain intact.
 4. Paste numbered lines with one duplicate. Review without saving, change a line and verify the review disappears. Review again; compare keeping duplicates with Skip duplicates.
 5. Add/edit an Activity containing `{card}` twice and `{player}`. Preview against different cards; verify literal replacement and unknown-placeholder retention. Save, close and reopen.
-6. In Work, draw a Jenga/Prompt Picker card. Enter Presentation View, hide/show controls, reroll a Random Activity, and exit. The card should remain unchanged by reroll or view toggles. Test portrait and landscape safe areas.
+6. In Work, draw a Jenga/Wild Card card. Enter Presentation View, hide/show controls, reroll a Random Activity, and exit. The card should remain unchanged by reroll or view toggles. Test portrait and landscape safe areas.
 7. Check normal deck editing/reordering and all existing game controls. Confirm Catchphrase expiry/awards, Heads Up manual/tilt controls and Taboo results still work.
 8. Once cached, repeat a cold launch, draw/edit, audio and sensor trial offline. Use Device Tests for permission/support diagnostics. Confirm saved data after reopening.
 9. Check larger text, VoiceOver reading order, bottom controls and Home Screen behavior on a physical device.
@@ -129,3 +129,9 @@ Catchphrase round-end team buttons show running totals and award one point; Next
 Open a regular or Taboo deck and expand **Deck icon**. Enter or paste one emoji using the device emoji keyboard, then choose **Save Icon**. Leave the field empty to restore the card-stack fallback. Compound emoji, skin tones, flags and keycaps are supported. Icons stay local and are included in deck and complete backups, restores and duplicates. Artwork varies by operating system. Existing decks need no migration.
 
 The Soft Shapes visual layer is isolated in `public/soft-shapes.css`; it preserves contextual tab colors and game layouts.
+
+## Getting started and round preparation
+
+Welcome and Deck Library guides appear once on this device, with replay and reset controls in Settings. Each one-device mode has a How to use this mode popup. Deck editors offer Use this deck to launch compatible modes with the deck selected. Wild Card keeps the existing prompts identifier and uses the shared deck picker.
+
+Catchphrase and Taboo prepare each new round with a three-second countdown before drawing a card or starting the game clock. Preparation chimes follow Timer sound. Cancel or leaving the app cancels preparation. Taboo has a compact landscape layout and results with Next Round in the primary viewport.
