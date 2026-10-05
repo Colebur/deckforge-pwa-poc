@@ -139,3 +139,13 @@ body.playing .round-end{height:calc(100dvh - env(safe-area-inset-top) - env(safe
 .end-team-grid strong{font-size:16px}.end-team-grid small{font-size:12px;color:inherit;font-weight:400}.end-team-grid .settled-team{opacity:1;color:var(--accent);background:var(--soft);cursor:default}
 .end-controls>.full{margin-top:8px;min-height:48px}.end-secondary{display:flex;justify-content:center;gap:12px;margin-top:4px}.round-extras{margin-top:16px}
 @media(orientation:landscape){body.playing .round-end{height:calc(100dvh - max(10px,env(safe-area-inset-top)) - max(10px,env(safe-area-inset-bottom)));gap:6px}.end-team-grid{grid-template-columns:repeat(var(--team-columns,2),minmax(0,1fr))}.end-team-grid button{min-height:56px}.round-end>.prompt{font-size:clamp(30px,6vw,56px)}}
+/* Taboo keeps prompt and controls inside the game viewport. */
+body.playing .taboo-game,body.playing .ready-countdown{height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 44px);min-height:0;gap:8px}
+.taboo-game .taboo-prompt{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:8px}
+.taboo-game .taboo-prompt .prompt{flex:0 1 auto;min-height:0;margin:0;overflow-wrap:anywhere}
+.taboo-game .taboo-forbidden{min-width:0}.taboo-game .forbidden-words{margin:0}.taboo-game .forbidden-words li{margin:0}.taboo-game .game-controls{flex:none}
+.taboo-totals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.taboo-totals>div{background:var(--soft);border-radius:12px;padding:6px;min-width:0;text-align:center;font-size:13px}.taboo-totals span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}.taboo-totals strong{display:block;font-size:14px}
+.tutorial-dialog .form-actions{justify-content:flex-end}.tutorial-dialog .form-actions button{flex:0 1 auto;min-width:90px}
+@media(orientation:landscape){body.playing .taboo-game,body.playing .ready-countdown{height:calc(100dvh - max(10px,env(safe-area-inset-top)) - max(10px,env(safe-area-inset-bottom)))}.taboo-game .taboo-prompt{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);align-items:center;gap:20px}.taboo-game .forbidden-label{margin:0 0 6px}.taboo-game .forbidden-words{font-size:clamp(16px,3vh,22px);line-height:1.25}.taboo-game .taboo-controls,.taboo-game .answer-buttons{flex-wrap:nowrap}.taboo-game .taboo-controls{gap:8px}.taboo-game .answer-buttons button{flex-basis:auto;min-width:0}.taboo-game .taboo-controls>.quiet{flex:none}.taboo-game .taboo-controls button{padding:10px 12px;min-height:48px}.taboo-game .taboo-prompt .prompt{font-size:clamp(28px,5vw,52px)}}
+
+.taboo-game .taboo-prompt{align-self:stretch;width:100%}
