@@ -1,3 +1,6 @@
+import {mobilePlatform,shouldOfferSafety,mountSafetyTutorial} from './device-safety.js';
+import {refreshViewport} from './viewport.js';
+import {loadSafetySeen,saveSafetySeen} from './storage.js';
 import {exportComplete,parseComplete,restoreComplete,type CompleteData,type CompletePreview} from './complete-backup.js';
 import {snapshotComplete,saveComplete,recoverCompleteStartup} from './complete-storage.js';
 import {completeRecovery} from './storage.js';
@@ -51,6 +54,12 @@ let placementLabel='';
 const sideways=():boolean=>matchMedia('(orientation: landscape)').matches;
 let library: Library;
 let preferences=defaultPreferences();
+let safetySeen=true; // Wait for the local flag before offering first-run help.
+const safetyPlatform=mobilePlatform(navigator.userAgent,navigator.maxTouchPoints);
+function openSafety():void {
+  mountSafetyTutorial(safetyPlatform,async()=>{await saveSafetySeen(true);safetySeen=true;},message=>say(message));
+}
+refreshViewport();
 const libraryFilters:Record<'regular'|'taboo',LibraryFilter>={regular:{search:'',context:'all',mode:'all'},taboo:{search:'',context:'all',mode:'all'}};
 let replaceAcknowledged=false;
 async function setPreferences(change:(next:Preferences)=>void):Promise<void>{
@@ -214,7 +223,8 @@ function render(): void {
 }
 function renderHome(): void {
   const modes=section==='work'?MODES:MODES.filter(m=>m.play);
-  app.innerHTML=`<p class="section-label">${section==='work'?'WORK':'PLAY'}</p>${section==='work'?'<p class="muted section-intro">Reusable decks for facilitated, family and group activities.</p>':''}<section class="list-panel">${modes.map(m=>destination(m.id,m.title,m.detail,m.icon)).join('')}</section>`;
+  app.innerHTML=`<p class="section-label">${section==='work'?'WORK':'PLAY'}</p>${section==='work'?'<p class="muted section-intro">Reusable decks for facilitated, family and group activities.</p>':''}<section class="list-panel">${modes.map(m=>destination(m.id,m.title,m.detail,m.icon)).join('')}</section>${section==='work'?button('device-safety','🔒 Device Handoff Safety','quiet full'):''}`;
+  if(shouldOfferSafety(safetyPlatform,section,safetySeen))openSafety();
 }
 function libraryRow(d:Deck|TabooDeck,kind:'regular'|'taboo'):string {
   const key=kind+':'+d.id,open=revealedDeck===key;
@@ -389,8 +399,8 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Prompt Picker: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Headbands with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.19.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
-    <p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.19.1')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>Device Handoff Safety</h2><p class="muted">Tips for restricting your phone to DeckForge before sharing it.</p>${button('device-safety','Review Safety Tutorial')}${button('reset-safety','Reset First-Run Tutorial','quiet full')}</section><p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
   app.innerHTML=`<section class="panel"><h2>Your saved data needs attention</h2><p class="error">${esc(loadFailure)}</p><p>No empty library was saved over your data.</p>${!futureData?button('backups','Open Backups','primary'):''}${button('reload','Try Reopening')}</section>`;
@@ -419,7 +429,7 @@ function navigate(target: string,nextSection?:typeof section): void {
   if((calibrating || (round && round.phase!=='ended')) && !confirm('Leave and end the current round?')) return;
   if(nextSection)section=nextSection;
   if(['library','editor','taboo-library','taboo-editor','game-decks'].includes(target))section='decks';
-  if(MODES.some(m=>m.id===target)){launchContext=(target==='lookup'||target==='prompts'||section==='work')?'work':'play';section=launchContext;showAllDecks=false;selected='';tabooSelected='';promptIds=undefined;promptSearch='';promptActivityMode='none';promptFixed={};promptSession=undefined;}
+  if(MODES.some(m=>m.id===target)){launchContext=(target==='lookup'||target==='flashcards'||section==='work')?'work':'play';section=launchContext;showAllDecks=false;selected='';tabooSelected='';promptIds=undefined;promptSearch='';promptActivityMode='none';promptFixed={};promptSession=undefined;}
   gameGeneration++;flipAnimation?.cancel();calibrating=false;preparing=false;round=undefined;match=undefined;tabooMatch=undefined;gameAudio.stop();releaseWake();audio.stop();sensors.stop();tilt.reset();placement.reset();sensors.onGravity=undefined; entry=''; editingCard=undefined; lookupIndex=null;
   study=undefined;presenting=false;presentationControls=true;expandedCards=false;pendingImport=undefined;bulkDraft='';revealedDeck='';resetLookup();editorSection='cards';editingActivity=undefined;promptDraw=undefined;route=target; say(''); render(); app.focus({preventScroll:true});window.scrollTo({top:0});
   if(previousSection!==section){
@@ -452,6 +462,8 @@ async function action(name: string): Promise<void> {
   const d=deck();
   if(name.startsWith('award-')){const index=name==='award-none'?null:Number(name.slice(6));if(match?.award(index))render();return;}
   switch(name) {
+    case 'device-safety':openSafety();break;
+    case 'reset-safety':await saveSafetySeen(false);safetySeen=false;say('Tutorial reset. Open Work on iPhone, iPad or Android to test first-run help.');break;
     case 'study-start':if(d?.cards.length){say('');studyDirection=document.querySelector<HTMLSelectElement>('#study-direction')!.value==='back'?'back':'front';study=new FlashcardSession(d.cards,studyDirection,d.name);render();}break;
     case 'study-setup':study=undefined;say('');render();break;
     case 'study-prev':case 'study-next':if(study){study.move(name==='study-next'?1:-1);say('');render();}break;
@@ -790,5 +802,5 @@ async function setupOffline(): Promise<void> {
     registration.addEventListener('updatefound',()=>{const installing=registration.installing;installing?.addEventListener('statechange',ready);});
   } catch(error) {offline='Offline setup failed · reopen online';mark();say(`Offline setup: ${String(error)}`);}
 }
-try {await recoverCompleteStartup();try{preferences=await loadPreferences();}catch{/* Preferences must never block deck recovery. */}library=await load();tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;restorePoint=await recovery();render();void storageProtection(true);void setupOffline();}
+try {await recoverCompleteStartup();try{safetySeen=await loadSafetySeen();}catch{/* A failed flag read must not interrupt deck loading. */}try{preferences=await loadPreferences();}catch{/* Preferences must never block deck recovery. */}library=await load();tabooTeams=library.tabooTeams?[...library.tabooTeams]:defaultTeams();tabooDuration=library.tabooDuration??0;draftTeams=library.teams?[...library.teams]:defaultTeams();draftDuration=library.teams?library.duration:0;headDuration=library.headbandsDuration??60;restorePoint=await recovery();render();void storageProtection(true);void setupOffline();}
 catch(error) {library=emptyLibrary();loadFailure=String(error);futureData=error instanceof NewerFormatError;try{restorePoint=await recovery();}catch{}render();void setupOffline();}

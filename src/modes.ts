@@ -4,7 +4,7 @@ export type DeckContext='play'|'work'|'both';
 export type LaunchContext='play'|'work';
 export const MODES=[
   {id:'lookup',title:'Jenga',detail:'Use numbered 54-block prompts with optional Activities.',icon:'#',format:'regular',play:false},
-  {id:'prompts',title:'Prompt Picker',detail:'Draw from one or more decks, with optional Activities.',icon:'✦',format:'regular',play:false},
+  {id:'prompts',title:'Prompt Picker',detail:'Draw from one or more decks, with optional Activities.',icon:'✦',format:'regular',play:true},
   {id:'flashcards',title:'Flashcards',detail:'Flip through cards to study and review both sides.',icon:'▤',format:'regular',play:false},
   {id:'catchphrase',title:'Catchphrase',detail:'Give clues. Guess the word. Pass the phone.',icon:'◷',format:'regular',play:true},
   {id:'headbands',title:'Headbands',detail:'Hold it at your forehead. Tilt to answer.',icon:'▱',format:'regular',play:true},

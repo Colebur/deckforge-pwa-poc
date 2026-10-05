@@ -121,3 +121,10 @@ body.playing #app{display:flex;flex-direction:column}body.playing .game{flex:1}
 .study-session .study-card{grid-column:1;grid-row:3/7;min-height:220px;height:100%;margin:0;padding:18px}
 .study-session>button.primary[data-action=study-flip],.study-session>.actions,.study-session>p:last-child{grid-column:2;margin:0}.study-session .actions{display:flex;flex-wrap:wrap}.study-session .actions button{flex:1;padding:10px;min-height:44px}.study-session>p:last-child{font-size:12px}.study-text{font-size:clamp(22px,3vw,40px)}
 }
+
+/* Fill the launch viewport before any tab navigation, including standalone resume. */
+html{min-height:100vh;min-height:100dvh;background:var(--page-background,#f2f2f7)}
+body{min-height:100vh;min-height:max(100dvh,var(--shell-height,0px))}
+.safety-dialog{--accent:#1769d2;--soft:#e9f1fd;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:24px;width:calc(100% - 28px);max-width:480px;max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 28px);padding:22px;overflow-y:auto;overscroll-behavior:contain}
+.safety-dialog::backdrop{background:#10182880}.safety-icon{display:block;color:var(--accent);font-size:26px;margin-bottom:12px}.safety-dialog h2{font-size:24px}.safety-subtitle{color:var(--accent);font-weight:600}.safety-dialog p,.safety-dialog li{font-size:14px;line-height:1.45}.safety-dialog ol{padding-left:22px}.safety-dialog .muted{font-size:12px}.safety-dialog #safety-error:empty{display:none}
+@media(prefers-color-scheme:dark){html{--page-background:#000}.safety-dialog{--accent:#409cff;--soft:#102b46}}
