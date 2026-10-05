@@ -1,15 +1,25 @@
 {
   "id": "./",
-  "name": "DeckForge PWA Lab",
-  "short_name": "Forge POC",
-  "description": "An isolated offline deck-game feasibility experiment.",
+  "name": "DeckForge",
+  "short_name": "DeckForge",
+  "description": "Reusable decks for games, study and group activities.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#142524",
   "theme_color": "#142524",
   "icons": [
-    {"src":"./icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
-    {"src":"./icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"}
+    {
+      "src": "./icon-pink-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-pink-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
   ]
 }
