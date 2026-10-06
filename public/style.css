@@ -149,3 +149,21 @@ body.playing .taboo-game,body.playing .ready-countdown{height:calc(100dvh - env(
 @media(orientation:landscape){body.playing .taboo-game,body.playing .ready-countdown{height:calc(100dvh - max(10px,env(safe-area-inset-top)) - max(10px,env(safe-area-inset-bottom)))}.taboo-game .taboo-prompt{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);align-items:center;gap:20px}.taboo-game .forbidden-label{margin:0 0 6px}.taboo-game .forbidden-words{font-size:clamp(16px,3vh,22px);line-height:1.25}.taboo-game .taboo-controls,.taboo-game .answer-buttons{flex-wrap:nowrap}.taboo-game .taboo-controls{gap:8px}.taboo-game .answer-buttons button{flex-basis:auto;min-width:0}.taboo-game .taboo-controls>.quiet{flex:none}.taboo-game .taboo-controls button{padding:10px 12px;min-height:48px}.taboo-game .taboo-prompt .prompt{font-size:clamp(28px,5vw,52px)}}
 
 .taboo-game .taboo-prompt{align-self:stretch;width:100%}
+
+/* Compact deck library and editor controls. */
+.deck-library-header,.deck-editor-header{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;margin-bottom:12px}
+.deck-library-header>span,.deck-editor-header>span{font-size:13px;white-space:nowrap}
+.deck-library-header input,.deck-editor-header input{min-width:0;padding:12px 10px}
+.deck-library-header>button{padding:12px 10px;font-size:14px}
+.library-tools .filter-controls{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.library-tools label{margin:0 0 6px}
+.library-tools select{padding:12px 8px}
+.library-tools>button{font-size:13px;padding:8px 0;min-height:44px}
+.deck-editor-header .deck-appearance{display:block;grid-column:1/-1;margin:0;padding:0;border:0;background:transparent}
+.deck-editor-header .deck-appearance>summary{position:absolute;top:0;right:0;height:48px;font-size:13px;gap:5px;white-space:nowrap}
+.deck-editor-header .deck-appearance>summary::before{font-size:18px}
+.deck-editor-header .deck-appearance .deck-emblem{font-size:22px;width:26px;height:32px}
+.deck-editor-header .deck-appearance>form{width:100%;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:18px}
+.deck-editor-header .deck-appearance:not([open])>form{display:none}
+.deck-editor-header input{width:calc(100% - 120px)}
+.deck-editor-header{position:relative;grid-template-columns:auto minmax(0,1fr)}
