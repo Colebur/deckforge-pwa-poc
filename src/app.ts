@@ -1,3 +1,5 @@
+import {LandingIdle} from './idle-motion.js';
+import {ENABLE_RICH_VISUALS,colorSelector,accentMetadata,deckBadge,applyDeckColor,modeIcon} from './rich-visuals.js';
 import {searchCards} from './card-search.js';
 import {RoundStart} from './round-start.js';
 import {mountTutorial,welcomePages,deckPages,modePages,variationPages} from './tutorials.js';
@@ -42,6 +44,7 @@ import { Sensors } from './sensors.js';
 const app = document.querySelector<HTMLElement>('#app')!;
 const notice = document.querySelector<HTMLElement>('#notice')!;
 const motion=new MotionSystem();
+const landingIdle=new LandingIdle();
 
 const audio = new AudioProbe();
 const sensors = new Sensors();
@@ -209,7 +212,7 @@ const deck = (): Deck | undefined => library.decks.find(d=>d.id===selected);
 const uid = (): string => crypto.randomUUID();
 function say(message: string): void { notice.textContent=message; }
 function destination(target: string, title: string, detail: string, symbol: string): string {
-  return `<button class="menu-row" data-route="${target}"><span class="symbol" aria-hidden="true">${symbol}</span><span><strong>${title}</strong>${detail?`<small>${detail}</small>`:''}</span><span class="arrow" aria-hidden="true">›</span></button>`;
+  return `<button class="menu-row" data-route="${target}"><span class="symbol" aria-hidden="true">${modeIcon(target,symbol)}</span><span><strong>${title}</strong>${detail?`<small>${detail}</small>`:''}</span><span class="arrow" aria-hidden="true">›</span></button>`;
 }
 function currentMode():ModeId {return MODES.find(m=>m.id===route)?.id??'catchphrase';}
 function availableDecks(){return modeDecks(library.decks,currentMode(),launchContext,showAllDecks);}
@@ -244,7 +247,7 @@ function render(): void {
   document.body.classList.toggle('work-presentation',presenting);
   document.body.classList.toggle('presentation-hidden-controls',presenting&&!presentationControls);
   const playing=presenting || (['catchphrase','headbands','taboo'].includes(route) && (!!pendingStart || calibrating || !!round)) || (route==='prompts' && !!promptDraw);
-  document.body.dataset.context=section;
+  document.body.dataset.context=section;document.body.classList.toggle('rich-visuals',ENABLE_RICH_VISUALS);applyDeckColor(document.body,route==='editor'?deck():route==='prompts'?promptDraw?.deck:['lookup','flashcards','catchphrase','headbands'].includes(route)?deck():undefined);
   document.body.classList.toggle('playing',playing);
   document.body.classList.toggle('home-screen',route==='home');
   const showTabs=mainTabsVisible(route)&&!playing;
@@ -283,7 +286,7 @@ function render(): void {
     const replacement=focusId?document.getElementById(focusId):focusAction?Array.from(app.querySelectorAll<HTMLElement>('[data-action]')).find(el=>el.dataset.action===focusAction):undefined;
     (replacement && !replacement.hidden && !(replacement instanceof HTMLButtonElement && replacement.disabled)?replacement:app).focus({preventScroll:true});
   }
-  } finally { motion.after(app,frame); }
+  } finally { motion.after(app,frame);landingIdle.update(app,route==='home'); }
 }
 function renderHome(): void {
   const modes=section==='work'?MODES:MODES.filter(m=>m.play);
@@ -292,7 +295,7 @@ function renderHome(): void {
 }
 function libraryRow(d:Deck|TabooDeck,kind:'regular'|'taboo'):string {
   const key=kind+':'+d.id,open=revealedDeck===key;
-  return `<div class="swipe-deck ${open?'revealed':''}" data-swipe-key="${esc(key)}"><button class="swipe-delete" data-swipe-delete="${esc(d.id)}" data-kind="${kind}" aria-label="Delete ${esc(d.name)}" ${open?'':'hidden'}>Delete</button><button type="button" class="deck-reveal quiet" data-reveal-key="${esc(key)}" aria-label="Show delete for ${esc(d.name)}" aria-expanded="${open}" ${open?'hidden':''}>···</button><button class="menu-row swipe-front" data-${kind==='regular'?'deck':'taboo-deck'}="${esc(d.id)}"><span class="deck-emblem" aria-hidden="true">${esc(d.emoji??'▤')}</span><span><strong>${esc(d.name)}</strong><small>${d.cards.length} cards${kind==='regular'?` · ${(d as Deck).activities.length} activities`:''} · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</small><small class="deck-modes">${esc(MODES.filter(m=>d.compatibleModes.includes(m.id)).map(m=>m.title).join(' · ')||'No assigned modes')}</small></span><span class="arrow" aria-hidden="true">›</span></button></div>`;
+  return `<div class="swipe-deck ${open?'revealed':''}" data-swipe-key="${esc(key)}"><button class="swipe-delete" data-swipe-delete="${esc(d.id)}" data-kind="${kind}" aria-label="Delete ${esc(d.name)}" ${open?'':'hidden'}>Delete</button><button type="button" class="deck-reveal quiet" data-reveal-key="${esc(key)}" aria-label="Show delete for ${esc(d.name)}" aria-expanded="${open}" ${open?'hidden':''}>···</button><button class="menu-row swipe-front" data-${kind==='regular'?'deck':'taboo-deck'}="${esc(d.id)}">${deckBadge(d.emoji?esc(d.emoji):undefined,'activities' in d?d:{})}<span><strong>${esc(d.name)}</strong><small>${d.cards.length} cards${kind==='regular'?` · ${(d as Deck).activities.length} activities`:''} · ${d.deckContext==='both'?'Both':d.deckContext==='play'?'Play':'Work'}</small><small class="deck-modes">${esc(MODES.filter(m=>d.compatibleModes.includes(m.id)).map(m=>m.title).join(' · ')||'No assigned modes')}</small></span><span class="arrow" aria-hidden="true">›</span></button></div>`;
 }
 function revealDeck(key:string):void {
   revealedDeck=key;
@@ -327,7 +330,7 @@ function renderLibrary(): void {
   updateLibraryResults();if(!decksSeen)openTutorial('decks');
 }
 function deckAppearance(d:Deck|TabooDeck):string {
-  return `<details class="panel deck-appearance"><summary><span class="deck-emblem" aria-hidden="true">${esc(d.emoji??'▤')}</span> Icon</summary><form id="deck-appearance-form"><label for="deck-emoji">Emoji (optional)</label><input id="deck-emoji" name="emoji" value="${esc(d.emoji??'')}" placeholder="🎬" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="emoji-help"><p id="emoji-help" class="muted">Use your device’s emoji keyboard or paste one emoji. Leave empty for the card-stack symbol. Emoji artwork varies by device.</p><button class="primary">Save Icon</button></form></details>`;
+  return `<details class="panel deck-appearance"><summary>${deckBadge(d.emoji?esc(d.emoji):undefined,'activities' in d?d:{})} Icon</summary><form id="deck-appearance-form"><label for="deck-emoji">Emoji (optional)</label><input id="deck-emoji" name="emoji" value="${esc(d.emoji??'')}" placeholder="🎬" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="emoji-help"><p id="emoji-help" class="muted">Use your device’s emoji keyboard or paste one emoji. Leave empty for the card-stack symbol. Emoji artwork varies by device.</p>${'activities' in d?colorSelector(d.accentColor):''}<button class="primary">Save Icon${ENABLE_RICH_VISUALS&&'activities' in d?' & Color':''}</button></form></details>`;
 }
 function deckEditorHeader(d:Deck|TabooDeck,showSearch=true):string {
   return `<div class="deck-editor-header"><span id="editor-card-count" class="muted">${d.cards.length} card${d.cards.length===1?'':'s'}</span>${showSearch?`<input id="card-search" type="search" aria-label="Search cards" value="${esc(cardSearch)}" placeholder="Search cards" title="Search all card fields. Card order stays unchanged." autocomplete="off">`:'<span></span>'}${deckAppearance(d)}</div>`;
@@ -470,7 +473,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Getting started</h2>${button('welcome-tutorial','Welcome to DeckForge')}${button('decks-tutorial','Deck Library Guide','full quiet')}${button('reset-tutorials','Reset Welcome & Decks Tutorials','full quiet')}</section><section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Wild Card: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Heads Up with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.30.1')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.31.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <section class="panel"><h2>Device Handoff Safety</h2><p class="muted">Tips for restricting your phone to DeckForge before sharing it.</p>${button('device-safety','Review Safety Tutorial')}${button('reset-safety','Reset First-Run Tutorial','quiet full')}</section><p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {
@@ -662,7 +665,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
   switch(form.id) {
     case 'deck-appearance-form':{
       const target=route==='taboo-editor'?tabooDeck():d;if(!target)break;const emoji=deckEmoji(data.get('emoji'));
-      await mutate(next=>{const found=(route==='taboo-editor'?next.tabooDecks:next.decks)!.find(x=>x.id===target.id)!;if(emoji)found.emoji=emoji;else delete found.emoji;});say('Deck icon saved.');break;
+      await mutate(next=>{const found=(route==='taboo-editor'?next.tabooDecks:next.decks)!.find(x=>x.id===target.id)!;if(emoji)found.emoji=emoji;else delete found.emoji;if(ENABLE_RICH_VISUALS&&'activities' in found){const accent=accentMetadata(data.get('accentColor')).accentColor;if(accent)found.accentColor=accent;else delete found.accentColor;}});say('Deck appearance saved.');break;
     }
     case 'organization-form':{
       const format=form.dataset.format==='taboo'?'taboo':'regular',target=format==='taboo'?tabooDeck():deck();if(!target)break;
@@ -855,7 +858,7 @@ function updatePlacement():void {
 }
 function headAnswer(correct:boolean):void {
   checkRound();if(!(round instanceof HeadbandsRound))return;
-  if(round.answer(correct,performance.now())){gameAudio.feedback(correct);tilt.disarm();if(round.phase==='ended'){gameAudio.stopCountdown();sensors.stop();releaseWake();}render();}
+  if(round.answer(correct,performance.now())){motion.intent(correct?'head-correct':'head-pass');gameAudio.feedback(correct);tilt.disarm();if(round.phase==='ended'){gameAudio.stopCountdown();sensors.stop();releaseWake();}render();}
 }
 function pauseGame():void {
   cancelCountdown();checkRound();gameGeneration++;preparing=false;calibrating=false;placement.reset();placementLabel='';

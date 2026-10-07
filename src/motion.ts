@@ -1,6 +1,7 @@
+import {ENABLE_RICH_VISUALS} from './rich-visuals.js';
 // Reversible decoration layer: no deck, storage, timer, score or session imports.
 export const MOTION={micro:140,ui:220,playful:320,exit:160,ease:'cubic-bezier(.2,.8,.2,1)',spring:'cubic-bezier(.2,.9,.3,1.12)'} as const;
-export type CardMotion='next'|'previous'|'draw'|'shuffle'|'activity'|'flip'|'unflip';
+export type CardMotion='next'|'previous'|'draw'|'shuffle'|'activity'|'flip'|'unflip'|'correct'|'pass'|'violation';
 export interface MotionIdentity {screen:string;section:string;card:string;phase?:string;depth?:number}
 export function navigationMotion(previous:MotionIdentity|undefined,next:MotionIdentity):'tab'|'forward'|'back'|undefined {
   if(!previous)return undefined;
@@ -22,7 +23,20 @@ export function cardFrames(kind:CardMotion,reduced=false):{enter:Keyframe[];exit
   const direction=kind==='previous'?-1:1;
   return {exit:[still,{opacity:0,transform:`translateX(${-direction*38}px) rotate(${-direction*1.5}deg)`}],enter:[{opacity:0,transform:`translateX(${direction*42}px) rotate(${direction*1}deg)`},still],duration:MOTION.ui};
 }
-const actions:Record<string,CardMotion>={'next-card':'next','head-correct':'next','head-pass':'next','taboo-correct':'next','taboo-pass':'next','taboo-violation':'next','study-next':'next','study-prev':'previous','lookup-prev':'previous','lookup-next':'next','lookup-random':'draw','lookup-form':'draw','prompt-draw':'draw','study-shuffle':'shuffle','reroll-activity':'activity','prompt-reroll':'activity'};
+export function richCardFrames(kind:CardMotion,mode:string,reduced=false):ReturnType<typeof cardFrames> {
+ const baseline=cardFrames(kind,reduced);
+ if(!ENABLE_RICH_VISUALS||reduced||kind==='flip'||kind==='unflip'||kind==='activity')return baseline;
+ const still={opacity:1,transform:'translate(0,0) rotate(0deg) scale(1)'};
+ if(mode==='headbands'){
+  const sign=kind==='pass'?1:-1;
+  return {exit:[still,{opacity:0,transform:'translateY('+sign*22+'px) rotate('+sign*2+'deg)'}],enter:[{opacity:.4,transform:'translateY('+(-sign*14)+'px) scale(.99)'},still],duration:180};
+ }
+ if(mode==='lookup')return {exit:[still,{opacity:0,transform:'translateY(-4px)'}],enter:[{opacity:0,transform:'translateY(12px) scale(.985)'},still],duration:200};
+ if(mode==='taboo'){const plan=cardFrames(kind==='pass'?'previous':'next');return {...plan,duration:170,...(kind==='violation'?{enter:[{opacity:.5,transform:'scale(.975)'},still]}:{})};}
+ if(mode==='catchphrase')return {...baseline,duration:170};
+ return baseline;
+}
+const actions:Record<string,CardMotion>={'next-card':'next','head-correct':'correct','head-pass':'pass','taboo-correct':'correct','taboo-pass':'pass','taboo-violation':'violation','study-next':'next','study-prev':'previous','lookup-prev':'previous','lookup-next':'next','lookup-random':'draw','lookup-form':'draw','prompt-draw':'draw','study-shuffle':'shuffle','reroll-activity':'activity','prompt-reroll':'activity'};
 const listActions=new Set(['confirm-import','delete-card','taboo-delete-card','confirm-delete-activity','delete-deck','taboo-delete','new-deck','card-form','activity-form','taboo-card-form','taboo-new-form','confirm-delete-deck']);
 interface Visual {node:HTMLElement;rect:DOMRect;copy?:HTMLElement;style:{font:string;color:string;display:string;variables:Record<string,string>}}
 interface Row {key:string;visual:Visual}
@@ -32,6 +46,7 @@ export class MotionSystem {
   private identities=new WeakMap<HTMLElement,MotionIdentity>();
   private hint?:CardMotion;
   private list=false;
+  private celebration=false;
   private effects=new Map<Animation,{node:HTMLElement;cleanup:()=>void}>();
   constructor(){
     for(const [key,value] of Object.entries(MOTION))document.documentElement.style.setProperty('--motion-'+key,typeof value==='number'?value+'ms':value);
@@ -50,11 +65,11 @@ export class MotionSystem {
     if(notice){let last='';new MutationObserver(()=>{const message=notice.textContent??'';if(message&&message!==last){this.run(notice,[{opacity:0,transform:'translateY(5px)'},{opacity:1,transform:'translateY(0)'}],MOTION.micro);if(/^(Deck saved|Taboo deck saved|Imported |Independent copy saved|Recent cards reset|\d+ (?:cards|activities) saved)/.test(message))this.pop(notice);}last=message;}).observe(notice,{childList:true,characterData:true,subtree:true});}
   }
   get reduced():boolean{return this.preference.matches;}
-  intent(action:string):void{this.hint=actions[action];this.list=listActions.has(action);}
+  intent(action:string):void{this.hint=actions[action];this.list=listActions.has(action);this.celebration=ENABLE_RICH_VISUALS&&(action.startsWith('award')||['taboo-correct','head-correct','confirm-reset-recent'].includes(action));}
   flip(reverse:boolean):void{this.hint=reverse?'unflip':'flip';}
   private visual(node:HTMLElement,copy=true):Visual {
     const style=getComputedStyle(node);
-    return {node,rect:node.getBoundingClientRect(),style:{font:style.font,color:style.color,display:style.display,variables:Object.fromEntries(['--accent','--soft','--panel','--line','--muted'].map(name=>[name,style.getPropertyValue(name)]))},copy:copy?node.cloneNode(true) as HTMLElement:undefined};
+    return {node,rect:node.getBoundingClientRect(),style:{font:style.font,color:style.color,display:style.display,variables:Object.fromEntries(['--accent','--soft','--panel','--line','--muted','--deck-accent'].map(name=>[name,style.getPropertyValue(name)]))},copy:copy?node.cloneNode(true) as HTMLElement:undefined};
   }
   private rows(root:HTMLElement,copy=true):Row[]{
     const buttons=root.querySelectorAll<HTMLElement>('[data-edit],[data-activity-edit],[data-taboo-edit],[data-deck],[data-taboo-deck]');
@@ -74,6 +89,7 @@ export class MotionSystem {
   after(root:HTMLElement,frame:MotionFrame):void {
     this.identities.set(root,frame.identity);this.indicator();
     if(this.reduced)return;
+    if(this.celebration){this.celebration=false;const result=root.querySelector<HTMLElement>('.team-total,.tilt-score,.game-status,.result');if(result)this.pop(result);}
     if(frame.navigation){
       this.cancel();const kind=frame.navigation;
       if(frame.page)this.ghost(frame.page,kind==='tab'?[{opacity:.65,transform:'translateY(0)'},{opacity:0,transform:'translateY(-8px)'}]:[{opacity:.7,transform:'translateX(0)'},{opacity:0,transform:`translateX(${kind==='back'?48:-28}px)`}],MOTION.exit);
@@ -86,13 +102,13 @@ export class MotionSystem {
     if(completion&&next)this.pop(next);
     else if(next&&frame.identity.card&&(changed||frame.hint||frame.identity.phase==='running'&&frame.previous?.phase==='ended')){
       const kind=frame.hint??(frame.previous?.card?'next':'draw');
-      const plan=cardFrames(kind);
+      const plan=richCardFrames(kind,frame.identity.screen.split(':')[0]!);
       this.cancel();
       const flip=kind==='flip'||kind==='unflip';
       if(frame.card)this.ghost(frame.card,plan.exit,flip?plan.duration/2:MOTION.exit);
       // The new state is already accessible and tappable. Only its painted face waits.
       this.run(next,plan.enter,flip?plan.duration/2:plan.duration,flip?plan.duration/2:0,flip?'backwards':'none');
-      if(kind==='draw'||kind==='shuffle')this.stack(next,plan.duration);
+      if((kind==='draw'||kind==='shuffle')&&frame.identity.screen!=='lookup')this.stack(next,plan.duration);
     }
     if(frame.list)this.listChange(root,frame.rows);
     [...root.querySelectorAll<HTMLElement>('.study-heading strong,.game-status .tag,.tilt-score')].forEach((node,i)=>{if(frame.counters[i]!==undefined&&node.textContent!==frame.counters[i])this.pop(node);});
