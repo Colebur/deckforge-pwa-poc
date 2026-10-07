@@ -1,0 +1,15 @@
+/* Optional rich layer. Every rule is gated; baseline styles remain intact. */
+.rich-visuals{background-image:radial-gradient(ellipse at 90% 0%,color-mix(in srgb,var(--accent) 7%,transparent),transparent 65%);background-attachment:fixed}
+.rich-visuals .rich-badge{position:relative;isolation:isolate;background:color-mix(in srgb,var(--deck-accent,var(--accent)) 12%,var(--panel));color:var(--deck-accent,var(--accent));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--deck-accent,var(--accent)) 12%,transparent),0 2px 5px #00000008}
+.rich-visuals .rich-badge::before{content:'';position:absolute;inset:8px;border:1px solid currentColor;border-radius:8px;opacity:.09;rotate:-12deg;z-index:-1}
+.rich-visuals .rich-badge::after{content:'';position:absolute;width:18px;height:18px;border:1px solid currentColor;border-radius:50%;right:2px;top:2px;opacity:.1;z-index:-1}
+.rich-visuals .deck-editor-header{border-bottom:2px solid color-mix(in srgb,var(--deck-accent,var(--accent)) 15%,transparent);padding-bottom:6px}
+.rich-visuals .prompt,.rich-visuals .study-card{border-color:color-mix(in srgb,var(--deck-accent,var(--accent)) 23%,var(--line))}
+.rich-visuals .mode-icon{width:30px;height:30px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.rich-visuals.home-screen .symbol{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 8%,transparent),0 3px 8px #00000006;background:linear-gradient(145deg,var(--soft),var(--panel))}
+.deck-colors{display:flex;gap:8px;flex-wrap:wrap}.deck-colors label{margin:0;position:relative;min-width:44px;min-height:44px;cursor:pointer}.deck-colors input[type=radio]{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0}.deck-colors span{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:50%;background:var(--swatch);font-size:0;border:3px solid var(--panel)}.deck-colors input:checked+span{outline:2px solid var(--accent)}.deck-colors input:checked+span::after{content:'✓';font-size:18px;color:white;text-shadow:0 1px 2px #000}.deck-colors input[value='']+span{font-size:10px;color:var(--muted)}.deck-colors input[value='']:checked+span::after{color:var(--accent);text-shadow:none}.deck-colors input:focus-visible+span{outline:3px solid #e6ad36;outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.rich-visuals .rich-badge::before{rotate:0deg}}
+@media(prefers-color-scheme:dark){.rich-visuals{background-image:radial-gradient(ellipse at 90% 0%,color-mix(in srgb,var(--accent) 9%,transparent),transparent 65%)}}
+
+.deck-colors input[type=radio]{min-height:0;max-width:none}
+.rich-visuals .game-status .tag{border-left:2px solid var(--deck-accent,var(--accent));padding-left:8px}

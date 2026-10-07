@@ -1,3 +1,4 @@
+import {accentMetadata} from './rich-visuals.js';
 import {emojiMetadata} from './deck-appearance.js';
 import {metadata} from './modes.js';
 import {validateActivities} from './activities.js';
@@ -26,7 +27,7 @@ export function validateLibrary(value: unknown, legacy=false): Library {
       if(card.back!==undefined&&typeof card.back!=='string')throw new Error('Invalid card back. Nothing was changed.');
       return {id: card.id, text: card.text,...(typeof card.back==='string'&&card.back.trim()?{back:card.back}:{})};
     });
-    return {id: entry.id, name: entry.name, ...emojiMetadata(entry.emoji), cards, activities:validateActivities(entry.activities),...regularMetadata(entry.deckContext,entry.compatibleModes,cards.length,legacy)};
+    return {id: entry.id, name: entry.name, ...emojiMetadata(entry.emoji), ...accentMetadata(entry.accentColor), cards, activities:validateActivities(entry.activities),...regularMetadata(entry.deckContext,entry.compatibleModes,cards.length,legacy)};
   });
   const result: Library={decks, duration: value.duration, probe: value.probe};
   if(value.teams!==undefined){if(!Array.isArray(value.teams)||!value.teams.every(v=>typeof v==='string'))throw new Error('Invalid team settings.');result.teams=teamNames(value.teams);}
