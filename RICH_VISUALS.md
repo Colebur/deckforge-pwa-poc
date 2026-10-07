@@ -22,3 +22,9 @@ Manual device trial:
 Revert: six ordered visual-polish commits on `visual-polish-v1` can be reverted in reverse order, preserving prior unrelated work. A full code revert may drop visual metadata on later saves through old explicit validators, so use the feature flag when retaining saved colors matters. Back up first.
 
 Validation: 159 automated tests pass. Browser checks covered color saving, existing libraries, Work/Play icons, Jenga, Wild Card, Flashcards and Heads Up/Taboo outcomes. Catchphrase rapid-advance check was interrupted by browser-control timeouts; repeat on device. Desktop and portrait layouts were inspected; physical iPhone/Android safe-area, reduced-motion feel, idle timing and landscape performance remain device acceptance checks.
+
+
+## Expressive v2 — 0.32.0
+Separate branch visual-polish-v2 starts from the 0.31.0 checkpoint e72169c. EXPRESSIVE_VISUALS=false restores the restrained v1 profile; ENABLE_RICH_VISUALS=false disables both passes. Color data remains unchanged.
+V2 strengthens washes (23% light / 20% dark), mode-card accent rails and tint, 56px library emoji badges, patterned depth and visible card surfaces/edges. Navigation lasts 420ms, cards 440–560ms, flips 520ms, result pulses 560ms and occasional idle movement 700ms. Press feedback remains 180ms. Card input still cancels/replaces animation; no game-state waiting was added. Reduced-motion guards and the single idle timer remain.
+Revert this v2 branch's commits to e72169c to restore v1 without reverting unrelated development; a profile switch is simpler.

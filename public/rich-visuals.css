@@ -13,3 +13,17 @@
 
 .deck-colors input[type=radio]{min-height:0;max-width:none}
 .rich-visuals .game-status .tag{border-left:2px solid var(--deck-accent,var(--accent));padding-left:8px}
+/* V2: remove .rich-expressive via EXPRESSIVE_VISUALS=false to restore v1. */
+.rich-expressive{background-image:radial-gradient(ellipse at 95% 0%,color-mix(in srgb,var(--accent) 23%,transparent),transparent 72%),radial-gradient(ellipse at 0% 85%,color-mix(in srgb,var(--accent) 10%,transparent),transparent 62%)}
+.rich-expressive.home-screen #app>.list-panel>.menu-row{border-left:4px solid color-mix(in srgb,var(--accent) 65%,var(--panel));background:linear-gradient(110deg,color-mix(in srgb,var(--accent) 9%,var(--panel)),var(--panel) 65%);box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 10%,transparent)}
+.rich-expressive.home-screen .symbol{background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 23%,var(--panel)),color-mix(in srgb,var(--accent) 9%,var(--panel)));box-shadow:0 4px 10px color-mix(in srgb,var(--accent) 15%,transparent)}
+.rich-expressive .mode-icon{width:36px;height:36px;stroke-width:2}
+.rich-expressive .rich-badge{background:linear-gradient(140deg,color-mix(in srgb,var(--deck-accent,var(--accent)) 32%,var(--panel)),color-mix(in srgb,var(--deck-accent,var(--accent)) 14%,var(--panel)));box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--deck-accent,var(--accent)) 25%,transparent),0 5px 12px color-mix(in srgb,var(--deck-accent,var(--accent)) 15%,transparent)}
+.rich-expressive .swipe-front .rich-badge{width:56px;height:56px;flex-basis:56px!important;font-size:32px}
+.rich-expressive .rich-badge::before{border-width:2px;opacity:.23;inset:7px;rotate:-16deg}.rich-expressive .rich-badge::after{opacity:.25;width:23px;height:23px}
+.rich-expressive .deck-editor-header{border-bottom-width:3px;border-color:color-mix(in srgb,var(--deck-accent,var(--accent)) 45%,transparent)}
+.rich-expressive .prompt,.rich-expressive .study-card{background:linear-gradient(145deg,color-mix(in srgb,var(--deck-accent,var(--accent)) 10%,var(--panel)),var(--panel) 75%);border:2px solid color-mix(in srgb,var(--deck-accent,var(--accent)) 35%,var(--line));border-radius:24px;box-shadow:0 7px 20px color-mix(in srgb,var(--deck-accent,var(--accent)) 12%,transparent);padding-inline:16px}
+.rich-expressive .taboo-prompt .prompt{padding:8px}
+.rich-expressive .motion-stack::before,.rich-expressive .motion-stack::after{border-width:2px;opacity:.35;background:var(--soft)}
+@media(prefers-color-scheme:dark){.rich-expressive{background-image:radial-gradient(ellipse at 95% 0%,color-mix(in srgb,var(--accent) 20%,transparent),transparent 72%),radial-gradient(ellipse at 0% 85%,color-mix(in srgb,var(--accent) 9%,transparent),transparent 62%)}}
+@media(prefers-reduced-motion:reduce){.rich-expressive .rich-badge::before{rotate:0deg}}

@@ -28,7 +28,7 @@ test('idle scheduler replaces a single timer and stops on teardown',()=>{
 test('rich mode plans keep reduced motion empty, preserve flips and distinguish tilt directions',()=>{
  for(const mode of ['headbands','catchphrase','taboo','lookup','prompts'])assert.deepEqual(richCardFrames('next',mode,true),{enter:[],exit:[],duration:0});
  assert.notDeepEqual(richCardFrames('correct','headbands'),richCardFrames('pass','headbands'));
- assert.equal(richCardFrames('next','catchphrase').duration,170);
+ assert.equal(richCardFrames('next','catchphrase').duration,460);
  assert.match(richCardFrames('flip','flashcards').exit.at(-1).transform,/rotateY/);
 });
 import {exportComplete,parseComplete,restoreComplete} from '../dist/complete-backup.js';
@@ -39,4 +39,12 @@ test('complete backup/restore retains visual metadata without altering source ID
  const parsed=parseComplete(exportComplete(data));assert.equal(parsed.library.decks[0].accentColor,'pink');
  const restored=restoreComplete(data,parsed,'add');assert.equal(restored.library.decks[1].accentColor,'pink');assert.equal(original.decks[0].cards[0].id,'c');
  assert.equal(parseComplete(exportBackup(library)).library.decks[0].accentColor,undefined);
+});
+
+test('expressive profile lengthens card motion while preserving flip and reduced-motion guards',()=>{
+ assert.equal(richCardFrames('draw','prompts').duration,560);
+ assert.equal(richCardFrames('flip','flashcards').duration,520);
+ assert.equal(richCardFrames('next','lookup').duration,480);
+ for(const mode of ['headbands','taboo','catchphrase','lookup','prompts'])for(const kind of ['next','pass','draw','flip'])assert.deepEqual(richCardFrames(kind,mode,true),{enter:[],exit:[],duration:0});
+ assert.match(richCardFrames('next','catchphrase').enter[0].transform,/100px/);
 });

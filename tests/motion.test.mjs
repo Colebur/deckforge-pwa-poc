@@ -48,7 +48,7 @@ test('rapid flips cancel prior effects, use inert ghosts, preserve current text,
    root.card=new e.Node(i%2?'Front':'Back');m.after(root,frame);
    assert.equal(root.card.textContent,i%2?'Front':'Back');assert.ok(e.body.nodes.length<=1);
    const ghost=e.body.nodes[0];assert.equal(ghost.inert,true);assert.equal(ghost.attributes['aria-hidden'],'true');assert.equal(ghost.attributes.id,undefined);
-   assert.equal(root.card.effects.at(-1).options.delay,160);assert.equal(root.card.effects.at(-1).options.fill,'backwards');
+   assert.equal(root.card.effects.at(-1).options.delay,260);assert.equal(root.card.effects.at(-1).options.fill,'backwards');
    if(i>0)assert.ok(old.effects.every(effect=>effect.cancelled));
   }
   m.cancel();assert.equal(e.body.nodes.length,0);assert.ok(root.card.effects.every(effect=>effect.cancelled));await Promise.resolve();

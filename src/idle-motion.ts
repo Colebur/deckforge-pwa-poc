@@ -1,4 +1,4 @@
-import {ENABLE_RICH_VISUALS} from './rich-visuals.js';
+import {ENABLE_RICH_VISUALS,EXPRESSIVE_VISUALS,EXPRESSIVE_MOTION} from './rich-visuals.js';
 // Testable one-shot scheduler: one timer, one animation, no per-mode intervals.
 export class IdleScheduler {
  private timer?:ReturnType<typeof setTimeout>;
@@ -24,6 +24,6 @@ export class LandingIdle {
   if(!this.root||document.hidden||this.preference.matches)return;
   const icons=[...this.root.querySelectorAll<HTMLElement>('.mode-icon')].filter(n=>{const r=n.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;});
   const icon=icons[Math.floor(Math.random()*icons.length)];if(!icon?.animate)return;
-  this.effect?.cancel();this.effect=icon.animate([{transform:'rotate(0) scale(1)'},{transform:'rotate(-4deg) scale(1.04)'},{transform:'rotate(0) scale(1)'}],{duration:320,easing:'ease-out'});
+  this.effect?.cancel();this.effect=icon.animate(EXPRESSIVE_VISUALS?[{transform:'translateY(0) rotate(0) scale(1)'},{transform:'translateY(-6px) rotate(-10deg) scale(1.14)'},{transform:'translateY(1px) rotate(3deg) scale(1.02)'},{transform:'translateY(0) rotate(0) scale(1)'}]:[{transform:'rotate(0) scale(1)'},{transform:'rotate(-4deg) scale(1.04)'},{transform:'rotate(0) scale(1)'}],{duration:EXPRESSIVE_VISUALS?EXPRESSIVE_MOTION.idle:320,easing:'ease-out'});
  }
 }
