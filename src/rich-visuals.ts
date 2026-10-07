@@ -1,5 +1,8 @@
 // Reversible presentation layer; no content or session behavior depends on this switch.
 export const ENABLE_RICH_VISUALS=true;
+// Set false to restore the restrained 0.31.0 profile without changing deck data.
+export const EXPRESSIVE_VISUALS=true;
+export const EXPRESSIVE_MOTION={micro:180,ui:420,playful:560,exit:280,idle:700};
 export const DECK_ACCENTS=[['red','#b8324b'],['coral','#be5145'],['orange','#a85c20'],['amber','#956b16'],['green','#35774a'],['teal','#267a73'],['cyan','#257487'],['blue','#326cbc'],['indigo','#5956ad'],['violet','#8051ad'],['purple','#934a9b'],['pink','#b64f83'],['slate','#626c7d']] as const;
 export type DeckAccentColor=typeof DECK_ACCENTS[number][0];
 export function accentMetadata(value:unknown):{accentColor?:DeckAccentColor}{
@@ -18,6 +21,7 @@ export function deckBadge(emoji:string|undefined,deck:{accentColor?:DeckAccentCo
  return '<span class="deck-emblem'+(ENABLE_RICH_VISUALS?' rich-badge':'')+'" aria-hidden="true"'+deckColorStyle(deck)+'>'+(emoji??'▤')+'</span>';
 }
 export function applyDeckColor(body:HTMLElement,deck?:{accentColor?:DeckAccentColor}):void {
+ body.classList.toggle('rich-expressive',ENABLE_RICH_VISUALS&&EXPRESSIVE_VISUALS);
  const color=ENABLE_RICH_VISUALS?DECK_ACCENTS.find(([id])=>id===deck?.accentColor)?.[1]:undefined;
  if(color)body.style.setProperty('--deck-accent',color);else body.style.removeProperty('--deck-accent');
 }
