@@ -160,12 +160,12 @@ body.playing .taboo-game,body.playing .ready-countdown{height:calc(100dvh - env(
 .library-tools select{padding:12px 8px}
 .library-tools>button{font-size:13px;padding:8px 0;min-height:44px}
 .deck-editor-header .deck-appearance{display:block;grid-column:1/-1;margin:0;padding:0;border:0;background:transparent}
-.deck-editor-header .deck-appearance>summary{position:absolute;top:0;right:0;height:48px;font-size:13px;gap:5px;white-space:nowrap}
+.deck-editor-header .deck-appearance>summary{position:absolute;top:0;right:20px;height:48px;font-size:13px;gap:5px;white-space:nowrap}
 .deck-editor-header .deck-appearance>summary::before{font-size:18px}
 .deck-editor-header .deck-appearance .deck-emblem{font-size:22px;width:26px;height:32px}
 .deck-editor-header .deck-appearance>form{width:100%;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:18px}
 .deck-editor-header .deck-appearance:not([open])>form{display:none}
-.deck-editor-header input{width:calc(100% - 88px)}
+.deck-editor-header input{width:calc(100% - 120px)}
 .deck-editor-header{position:relative;grid-template-columns:auto minmax(0,1fr)}
 
 /* Compact editor actions; expanded menus use the full available width. */
