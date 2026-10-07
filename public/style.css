@@ -165,5 +165,16 @@ body.playing .taboo-game,body.playing .ready-countdown{height:calc(100dvh - env(
 .deck-editor-header .deck-appearance .deck-emblem{font-size:22px;width:26px;height:32px}
 .deck-editor-header .deck-appearance>form{width:100%;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:18px}
 .deck-editor-header .deck-appearance:not([open])>form{display:none}
-.deck-editor-header input{width:calc(100% - 120px)}
+.deck-editor-header input{width:calc(100% - 88px)}
 .deck-editor-header{position:relative;grid-template-columns:auto minmax(0,1fr)}
+
+/* Compact editor actions; expanded menus use the full available width. */
+.deck-menu-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.deck-menu-row>.panel{min-width:0;margin:0;padding:14px}
+.deck-menu-row>.panel[open]{grid-column:1/-1}
+.deck-menu-row>details>summary{font-size:14px;align-items:flex-start;min-height:52px}
+.deck-menu-heading{display:block;min-width:0;flex:1}
+.deck-menu-heading>span{display:block;line-height:1.35}
+.deck-menu-heading>small{display:block;margin-top:5px;font-size:12px;font-weight:400;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.deck-content-tabs button:first-child{flex:2}
+.deck-content-tabs button:last-child{flex:1}
