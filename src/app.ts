@@ -1,3 +1,4 @@
+import {mountActivityLibrary} from './activity-library-ui.js';
 import {LandingIdle} from './idle-motion.js';
 import {ENABLE_RICH_VISUALS,colorSelector,accentMetadata,deckBadge,applyDeckColor,modeIcon} from './rich-visuals.js';
 import {searchCards} from './card-search.js';
@@ -102,6 +103,7 @@ let route = 'home';
 let section:'play'|'work'|'link'|'decks'='play';
 let stopMultiplayer:(()=>void)|undefined;
 let stopPacks:(()=>void)|undefined;
+let stopActivities:(()=>void)|undefined;
 let packGeneration=0;
 let stopAudience:(()=>void)|undefined;
 const tvCode=new URL(location.href).searchParams.get('tv'),tvSecret=new URLSearchParams(location.hash.slice(1)).get('display');
@@ -235,6 +237,7 @@ function motionIdentity():MotionIdentity {
   return {screen:route+(['editor','taboo-editor'].includes(route)?':'+(route==='editor'?selected:tabooSelected):''),section,card,phase:round?.phase};
 }
 function render(): void {
+  if(route!=='activity-library'&&stopActivities){stopActivities();stopActivities=undefined;}
   if(tvCode&&tvSecret){if(!stopAudience){document.querySelector<HTMLElement>('header')!.hidden=true;document.querySelector<HTMLElement>('#main-tabs')!.hidden=true;document.querySelector<HTMLElement>('footer')!.hidden=true;stopAudience=mountAudience(app,tvCode,tvSecret);}return;}
   const frame=motion.before(app,motionIdentity());
   try {
@@ -256,7 +259,7 @@ function render(): void {
   tabs.innerHTML=[['play','▶','Play'],['work','▦','Work'],['link','⇄','Link'],['decks','▱','Decks']].map(([id,icon,title])=>`<button data-tab="${id}" ${section===id?'aria-current="page"':''}><span aria-hidden="true">${icon}</span>${title}</button>`).join('');
   document.body.classList.toggle('lookup-screen',route==='lookup'&&availableDecks().visible.length>0);
   document.querySelector<HTMLButtonElement>('#rename-button')!.hidden=!['editor','taboo-editor'].includes(route)||!!loadFailure;
-  document.querySelector<HTMLElement>('#page-title')!.textContent=({'game-decks':'Game Decks',link:'Link',home:section==='work'?'Work':'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Jenga',flashcards:'Flashcards',prompts:'Wild Card',catchphrase:'Catchphrase',headbands:'Heads Up',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
+  document.querySelector<HTMLElement>('#page-title')!.textContent=({'game-decks':'Game Decks',link:'Link','activity-library':'Activities',home:section==='work'?'Work':'DeckForge',taboo:'Taboo','taboo-library':'Taboo Decks','taboo-editor':tabooDeck()?.name??'Taboo Deck',library:'Deck Library',editor:deck()?.name ?? 'Deck',lookup:'Jenga',flashcards:'Flashcards',prompts:'Wild Card',catchphrase:'Catchphrase',headbands:'Heads Up',backups:'Backups',settings:'Settings',lab:'Device Tests'} as Record<string,string>)[route] ?? 'DeckForge';
   document.querySelector<HTMLButtonElement>('#home-button')!.hidden=['home','link','library'].includes(route);
   const back=document.querySelector<HTMLButtonElement>('#home-button')!;
   back.dataset.action=route==='editor'?'back':route==='taboo-editor'?'taboo-library':'home';
@@ -267,6 +270,7 @@ function render(): void {
   if(pendingStart){app.innerHTML=`<section class="game ready-countdown"><div class="game-status">Get ready</div><div class="prompt" id="ready-number" aria-live="polite">${pendingStart.clock.seconds(performance.now())}</div><p class="end-summary">The round starts after the countdown.</p><div class="game-controls">${button('cancel-countdown','Cancel','quiet full')}</div></section>`;}
   else if(route==='link'){if(!stopMultiplayer){app.innerHTML='<div id=multiplayer class=multiplayer><p id=room-status class=muted role=status aria-live=polite></p><div id=room-content></div></div>';stopMultiplayer=mountMultiplayer(app.querySelector('#room-content')!,app.querySelector('#room-status')!,library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)).map(d=>({id:d.id,name:d.name,items:d.cards.map(c=>c.text)})),library.decks.filter(d=>d.cards.length).sort((a,b)=>a.name.localeCompare(b.name)),()=>navigate('game-decks'),motion,(detail,back)=>{linkBack=back;const show=mainTabsVisible('link',detail);document.querySelector<HTMLElement>('#main-tabs')!.hidden=!show;document.body.classList.toggle('has-tabs',show);const button=document.querySelector<HTMLButtonElement>('#home-button')!;button.hidden=!detail;button.dataset.action='link-back';button.setAttribute('aria-label','Back to Link');});}}
   else if(route==='game-decks'){if(!stopPacks){const generation=++packGeneration;app.innerHTML='<div class=multiplayer><div id=pack-content><p class=muted>Loading Game Decks…</p></div></div>';stopPacks=()=>{};void loadPacks().then(packs=>{if(route!=='game-decks'||generation!==packGeneration)return;stopPacks=mountPackEditor(app.querySelector('#pack-content')!,notice,packs,()=>navigate('library'),'Back to Deck Library',motion);}).catch(error=>{if(route==='game-decks'&&generation===packGeneration)say(String(error));});}}
+  else if(route==='activity-library'){if(!stopActivities){app.innerHTML='<div id=activity-library-root></div>';stopActivities=mountActivityLibrary(app.querySelector('#activity-library-root')!,say);}}
   else if(route==='home') renderHome();
   else if(route==='library') renderLibrary();
   else if(route==='editor') renderEditor();
@@ -290,7 +294,7 @@ function render(): void {
 }
 function renderHome(): void {
   const modes=section==='work'?MODES:MODES.filter(m=>m.play);
-  app.innerHTML=`<p class="section-label">${section==='work'?'WORK':'PLAY'}</p>${section==='work'?'<p class="muted section-intro">Reusable decks for facilitated, family and group activities.</p>':''}<section class="list-panel">${modes.map(m=>destination(m.id,m.title,m.detail,m.icon)).join('')}</section>${section==='work'?button('device-safety','🔒 Device Handoff Safety','quiet full'):''}`;
+  app.innerHTML=`<p class="section-label">${section==='work'?'WORK':'PLAY'}</p>${section==='work'?'<p class="muted section-intro">Reusable decks for facilitated, family and group activities.</p>':''}<section class="list-panel">${modes.map(m=>destination(m.id,m.title,m.detail,m.icon)).join('')}</section>${section==='work'?destination('activity-library','Activities','Find an activity, filter by your group, or let Surprise Me choose.','✦'):''}${section==='work'?button('device-safety','🔒 Device Handoff Safety','quiet full'):''}`;
   if(!welcomeSeen)openTutorial('welcome');else if(shouldOfferSafety(safetyPlatform,section,safetySeen))openSafety();
 }
 function libraryRow(d:Deck|TabooDeck,kind:'regular'|'taboo'):string {
@@ -473,7 +477,7 @@ function renderBackups(): void {
 function renderSettings(): void {
   app.innerHTML=`<p class="section-label">YOUR DATA</p><section class="list-panel">${destination('backups','Backups','Export a file or restore your decks.','↥')}</section>
     <section class="panel"><h2>Getting started</h2>${button('welcome-tutorial','Welcome to DeckForge')}${button('decks-tutorial','Deck Library Guide','full quiet')}${button('reset-tutorials','Reset Welcome & Decks Tutorials','full quiet')}</section><section class="panel"><h2>Reading & controls</h2><label class="check"><input id="large-text" type="checkbox" ${preferences.largeText?'checked':''}> Larger text</label><p class="muted">Also supports browser zoom and your device’s reduced-motion preference.</p><details><summary>Keyboard controls</summary><p>Tab moves between controls; Enter activates buttons. Jenga: Left/Right for Previous/Next, R for Random. Wild Card: Space draws again during presentation. Timed games: Space pauses/resumes. Catchphrase: Right for Next Card. Heads Up with buttons: Down for Correct, Up for Pass. Taboo: Right for Correct, Left for Pass, V for a violation.</p><p>Shortcuts are inactive while typing or using menus, and never start a round or end one.</p></details></section><section class="panel"><h2>Storage protection</h2>${metric('Protection',storageMode,'storage-mode')}<p class="muted">Protection helps prevent automatic cleanup. A saved backup file is still the safest recovery option.</p>${button('storage','Request Storage Protection')}</section>
-    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.32.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
+    <section class="panel"><h2>App updates</h2>${metric('Installed version','0.33.0')}${metric('Offline & updates',offline,'settings-offline')}<p class="muted">Updates keep your decks. After an update downloads, close every window for this web app and reopen.</p>${button('check-update','Check for Update')}</section>
     <section class="panel"><h2>Device Handoff Safety</h2><p class="muted">Tips for restricting your phone to DeckForge before sharing it.</p>${button('device-safety','Review Safety Tutorial')}${button('reset-safety','Reset First-Run Tutorial','quiet full')}</section><p class="section-label">DIAGNOSTICS</p><section class="list-panel">${destination('lab','Device Tests','Motion, audio, offline checks and vibration.','⚙')}</section>`;
 }
 function renderStorageError(): void {

@@ -120,3 +120,9 @@ export async function saveRecentCards(state:RecentCardState):Promise<void>{
     tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??new Error('Recent card save canceled.'));
   });
 }
+
+import {decodeActivities,type FacilitationActivity} from './activity-library.js';
+export async function loadFacilitationActivities():Promise<FacilitationActivity[]>{return decodeActivities(await read('facilitation-activities'));}
+export async function saveFacilitationActivities(items:FacilitationActivity[]):Promise<void>{
+ const value=decodeActivities(items),db=await open();await new Promise<void>((resolve,reject)=>{const tx=db.transaction('state','readwrite');tx.objectStore('state').put(value,'facilitation-activities');tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
+}

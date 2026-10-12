@@ -1,0 +1,8 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {validateActivity,parseActivities,exportActivities,mergeActivities,filterActivities,emptyActivityFilters,surpriseActivity,decodeActivities} from '../dist/activity-library.js';
+const a=validateActivity({id:'a',title:'Tower',description:'Build together.',tags:['STEM'],minAge:5,maxAge:12,duration:15});
+test('activities preserve metadata and roundtrip',()=>{assert.deepEqual(parseActivities(exportActivities([a])).items,[a]);assert.deepEqual(decodeActivities(undefined),[]);});
+test('bad imports are reported without removing good rows',()=>{const p=parseActivities(JSON.stringify([a,{title:'Missing'}]));assert.equal(p.items.length,1);assert.equal(p.problems.length,1);assert.throws(()=>parseActivities('bad'));assert.throws(()=>validateActivity({...a,minAge:20,maxAge:10}));});
+test('imports skip duplicates and retain current IDs/favorites',()=>{const p=mergeActivities([{...a,favorite:true}],[a,{...a,title:'Other'}],()=> 'new');assert.equal(p.skipped,1);assert.equal(p.items[0].id,'a');assert.equal(p.items[1].id,'new');});
+test('filters combine and unspecified ages do not promise suitability',()=>{const f=emptyActivityFilters();f.search='stem';f.age='7';f.duration='15';assert.equal(filterActivities([a],f).length,1);f.age='14';assert.equal(filterActivities([a],f).length,0);});
+test('surprise avoids immediate repeat and handles empty/single pools',()=>{assert.equal(surpriseActivity([]),undefined);assert.equal(surpriseActivity([a],'a').id,'a');assert.equal(surpriseActivity([a,{...a,id:'b'}],'a',()=>0).id,'b');});
