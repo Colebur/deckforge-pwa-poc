@@ -1,0 +1,256 @@
+{
+  "format": "deckforge-activities",
+  "version": 1,
+  "activities": [
+    {
+      "id": "sample-1",
+      "title": "Alien Engineering Challenge",
+      "description": "Use paper or clean household objects to design a home for an imaginary alien. Ask what it needs, build together, then explain one design choice.",
+      "purposes": [
+        "rapport-building",
+        "problem-solving"
+      ],
+      "audiences": [
+        "individual",
+        "pairs"
+      ],
+      "tags": [
+        "STEM",
+        "creative"
+      ],
+      "minAge": 6,
+      "maxAge": 14,
+      "duration": 15,
+      "materials": "Paper, pencils; optional clean household objects",
+      "preparation": "minimal",
+      "adaptations": "Practice asking for help and trying a second design.",
+      "variations": "Shorten the activity, allow passing, or work together instead of competing.",
+      "favorite": false
+    },
+    {
+      "id": "sample-2",
+      "title": "Household Scavenger Hunt",
+      "description": "Agree which rooms and objects are safe to use. Find something soft, something with a pattern and something useful. Share why each was chosen; leave private spaces alone.",
+      "purposes": [
+        "rapport-building",
+        "cooperation"
+      ],
+      "audiences": [
+        "whole family",
+        "small groups"
+      ],
+      "tags": [
+        "physical",
+        "low-demand"
+      ],
+      "minAge": 4,
+      "maxAge": 99,
+      "duration": 10,
+      "materials": "None",
+      "preparation": "none",
+      "adaptations": "Take turns giving clues rather than racing.",
+      "variations": "Shorten the activity, allow passing, or work together instead of competing.",
+      "favorite": false
+    },
+    {
+      "id": "sample-3",
+      "title": "Collaborative Tower",
+      "description": "Build one tower from cups or blocks. Take turns adding pieces and choosing a strategy. If it falls, pause and decide together what to try next.",
+      "purposes": [
+        "cooperation",
+        "emotional regulation"
+      ],
+      "audiences": [
+        "pairs",
+        "small groups"
+      ],
+      "tags": [
+        "STEM",
+        "cooperative"
+      ],
+      "minAge": 5,
+      "maxAge": 99,
+      "duration": 15,
+      "materials": "Cups or blocks",
+      "preparation": "minimal",
+      "adaptations": "Name frustration and practice a calm restart.",
+      "variations": "Shorten the activity, allow passing, or work together instead of competing.",
+      "favorite": false
+    },
+    {
+      "id": "sample-4",
+      "title": "Emotion Charades",
+      "description": "Invite each person to choose a feeling and show it through a face or pose. Others offer guesses, then ask what situations could bring that feeling. Passing is welcome.",
+      "purposes": [
+        "emotional awareness",
+        "rapport-building"
+      ],
+      "audiences": [
+        "whole family",
+        "pairs"
+      ],
+      "tags": [
+        "creative",
+        "low-demand"
+      ],
+      "minAge": 5,
+      "maxAge": 99,
+      "duration": 10,
+      "materials": "None",
+      "preparation": "none",
+      "adaptations": "Avoid interpreting someone’s expression as proof of their feelings.",
+      "variations": "Shorten the activity, allow passing, or work together instead of competing.",
+      "favorite": false
+    },
+    {
+      "id": "sample-5",
+      "title": "Cooperative Story",
+      "description": "Start a story with an imaginary character. Each person adds one sentence. Work together toward an ending; offer a drawing option or a pass.",
+      "purposes": [
+        "communication",
+        "cooperation"
+      ],
+      "audiences": [
+        "whole family",
+        "small groups"
+      ],
+      "tags": [
+        "creative",
+        "cooperative"
+      ],
+      "minAge": 6,
+      "maxAge": 99,
+      "duration": 15,
+      "materials": "Optional paper",
+      "preparation": "none",
+      "adaptations": "Practice building on another person’s idea before adding your own.",
+      "variations": "Shorten the activity, allow passing, or work together instead of competing.",
+      "favorite": false
+    },
+    {
+      "id": "sample-6",
+      "title": "Paper Airplane Laboratory",
+      "description": "Fold two paper airplane designs. Choose a safe clear launch area away from faces. Predict which will travel farther, test, then change one feature and test again.",
+      "purposes": [
+        "problem-solving",
+        "rapport-building"
+      ],
+      "audiences": [
+        "individual",
+        "pairs"
+      ],
+      "tags": [
+        "STEM",
+        "building"
+      ],
+      "minAge": 7,
+      "maxAge": 99,
+      "duration": 20,
+      "materials": "Paper; optional tape measure",
+      "preparation": "minimal",
+      "adaptations": "Frame unexpected results as information rather than failure.",
+      "variations": "Shorten the activity, allow passing, or work together instead of competing.",
+      "favorite": false
+    },
+    {
+      "id": "sample-7",
+      "title": "Listen and Draw",
+      "description": "One person describes a simple shape arrangement without showing it. Another draws from the description, asking clarifying questions. Compare kindly and switch roles.",
+      "purposes": [
+        "communication",
+        "perspective-taking"
+      ],
+      "audiences": [
+        "pairs",
+        "whole family"
+      ],
+      "tags": [
+        "creative",
+        "cooperative"
+      ],
+      "minAge": 8,
+      "maxAge": 99,
+      "duration": 15,
+      "materials": "Paper and pencils",
+      "preparation": "minimal",
+      "adaptations": "Practice checking understanding instead of blaming the speaker.",
+      "variations": "Shorten the activity, allow passing, or work together instead of competing.",
+      "favorite": false
+    },
+    {
+      "id": "sample-8",
+      "title": "Would You Rather",
+      "description": "Take turns offering lighthearted choices, such as exploring space or the ocean. Share a reason and ask a curious follow-up. Avoid private or distressing topics; passing is fine.",
+      "purposes": [
+        "rapport-building",
+        "communication"
+      ],
+      "audiences": [
+        "individual",
+        "whole family"
+      ],
+      "tags": [
+        "conversation",
+        "low-demand"
+      ],
+      "minAge": 6,
+      "maxAge": 99,
+      "duration": 10,
+      "materials": "None",
+      "preparation": "none",
+      "adaptations": "Notice different preferences without persuading others to change.",
+      "variations": "Shorten the activity, allow passing, or work together instead of competing.",
+      "favorite": false
+    },
+    {
+      "id": "sample-9",
+      "title": "Mystery Object Detective",
+      "description": "Choose a safe everyday object. Describe it without naming it while others ask yes/no questions. Reveal it after several guesses and trade roles.",
+      "purposes": [
+        "problem-solving",
+        "rapport-building"
+      ],
+      "audiences": [
+        "pairs",
+        "small groups"
+      ],
+      "tags": [
+        "STEM",
+        "conversation"
+      ],
+      "minAge": 5,
+      "maxAge": 99,
+      "duration": 10,
+      "materials": "Safe everyday object",
+      "preparation": "none",
+      "adaptations": "Model patient question asking and accepting uncertainty.",
+      "variations": "Shorten the activity, allow passing, or work together instead of competing.",
+      "favorite": false
+    },
+    {
+      "id": "sample-10",
+      "title": "Two Perspectives",
+      "description": "Invent a mild fictional disagreement, such as two siblings choosing a game. Describe what each character wants, feels and might ask for. Find two possible compromises. Do not require discussion of actual family conflict.",
+      "purposes": [
+        "perspective-taking",
+        "communication"
+      ],
+      "audiences": [
+        "whole family",
+        "pairs"
+      ],
+      "tags": [
+        "conversation",
+        "cooperative"
+      ],
+      "minAge": 9,
+      "maxAge": 99,
+      "duration": 15,
+      "materials": "None",
+      "preparation": "none",
+      "adaptations": "Use fictional distance; pause if the scenario becomes uncomfortable.",
+      "variations": "Shorten the activity, allow passing, or work together instead of competing.",
+      "favorite": false
+    }
+  ]
+}
