@@ -27,6 +27,7 @@ export function applyDeckColor(body:HTMLElement,deck?:{accentColor?:DeckAccentCo
 }
 const ICONS:Record<string,string>={
  prompts:'<rect x="7" y="7" width="15" height="20" rx="3"/><path d="M4 3v6M1 6h6M23 2v6M20 5h6"/>',
+ 'activity-library':'<rect x="4" y="4" width="22" height="23" rx="4"/><path d="m9 12 2 2 4-4M18 12h4m-13 7 2 2 4-4M18 19h4"/>',
  catchphrase:'<circle cx="15" cy="16" r="10"/><path d="M15 10v6l4 2M11 2h8M15 2v4"/>',
  headbands:'<path d="M9 3 25 8 19 27 3 22Z"/><path d="m11 12 7 2m-8 3 5 2"/>',
  taboo:'<rect x="5" y="3" width="20" height="24" rx="3"/><path d="m4 26 22-22M10 11h10M10 18h6"/>',
