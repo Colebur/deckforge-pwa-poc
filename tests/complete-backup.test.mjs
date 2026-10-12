@@ -8,8 +8,27 @@ const data={library,packs,preferences:{...defaultPreferences(),largeText:true,ba
 test('complete backup roundtrips backs, Activities, rich answers and preferences without private room state',()=>{const text=exportComplete({...data,roomToken:'secret'});assert.deepEqual(parseComplete(text),{...data,source:'Complete DeckForge backup'});assert.ok(!text.includes('secret'));assert.match(text,/deckforge-complete-backup/);});
 test('add gives independent copies and keeps current settings; replace restores settings without mutating input',()=>{let n=0;const original=structuredClone(data);const add=restoreComplete(data,parseComplete(exportComplete(data)),'add',()=>String(++n));assert.equal(add.library.decks.length,2);assert.equal(add.packs.length,2);assert.notEqual(add.packs[1].id,'p');assert.notEqual(add.library.decks[1].cards[0].id,'c');assert.deepEqual(add.preferences,data.preferences);const replace=restoreComplete({...data,preferences:defaultPreferences()},parseComplete(exportComplete(data)),'replace');assert.equal(replace.preferences.largeText,true);assert.deepEqual(data,original);});
 test('legacy library and Game Decks backups restore only included collections',()=>{const old=parseComplete(exportBackup(library));assert.equal(old.packs,undefined);const restored=restoreComplete(data,old,'replace');assert.deepEqual(restored.packs,packs);assert.deepEqual(restored.preferences,data.preferences);const rich=parseComplete(JSON.stringify({format:'deckforge-game-decks',version:1,packs}));const r=restoreComplete(data,rich,'replace');assert.deepEqual(r.library,library);assert.equal(r.packs.length,1);assert.deepEqual(r.preferences,data.preferences);});
-test('rejects unknown versions and malformed game content before writes',()=>{assert.throws(()=>parseComplete(JSON.stringify({format:'deckforge-complete-backup',version:2,...data})),NewerFormatError);assert.throws(()=>parseComplete(exportComplete(data).replace('"points": 100','"points": -1')));assert.throws(()=>parseComplete('{broken'));});
+test('rejects unknown versions and malformed game content before writes',()=>{assert.throws(()=>parseComplete(JSON.stringify({format:'deckforge-complete-backup',version:3,...data})),NewerFormatError);assert.throws(()=>parseComplete(exportComplete(data).replace('"points": 100','"points": -1')));assert.throws(()=>parseComplete('{broken'));});
 function memory(){let pending=null,current=structuredClone(data),fail=false;return {get current(){return current},get journal(){return pending},set fail(v){fail=v},async pending(){return pending},async begin(before){pending=structuredClone(before)},async packs(p){current.packs=structuredClone(p)},async commit(value){if(fail){fail=false;throw new Error('write failure')}current=structuredClone(value);pending=null}};}
 test('partial write failure rolls back both collections and settings',async()=>{const store=memory();store.fail=true;await assert.rejects(commitComplete(store,data,{...data,packs:[],preferences:defaultPreferences()}));assert.deepEqual(store.current,data);assert.equal(store.journal,null);});
 test('startup repairs a persisted interrupted restore before library load',async()=>{const store=memory();await store.begin(data);await store.packs([]);assert.equal(await recoverInterrupted(store),true);assert.deepEqual(store.current,data);assert.equal(await recoverInterrupted(store),false);});
 test('if rollback also fails, journal survives for later startup recovery',async()=>{const base=memory();let blocked=true;const store={pending:()=>base.pending(),begin:v=>base.begin(v),packs:v=>base.packs(v),commit:async v=>{if(blocked)throw new Error('storage unavailable');await base.commit(v)}};await assert.rejects(commitComplete(store,data,{...data,packs:[]}),/recovery snapshot is retained/);assert.deepEqual(base.journal,data);blocked=false;assert.equal(await recoverInterrupted(store),true);assert.deepEqual(base.current,data);});
+
+import {validateActivity} from '../dist/activity-library.js';
+const activity=validateActivity({id:'act',title:'Tower',description:'Build together',favorite:true});
+test('v2 complete backup includes structured Activities; older backups keep current activities',()=>{
+ const current={...data,facilitationActivities:[activity]};
+ const exported=exportComplete(current);assert.equal(JSON.parse(exported).version,2);
+ assert.deepEqual(parseComplete(exported).facilitationActivities,[activity]);
+ const legacy=JSON.stringify({format:'deckforge-complete-backup',version:1,...data});
+ assert.deepEqual(restoreComplete(current,parseComplete(legacy),'replace').facilitationActivities,[activity]);
+ assert.deepEqual(restoreComplete(current,parseComplete(exportBackup(library)),'replace').facilitationActivities,[activity]);
+ const added=restoreComplete(current,parseComplete(exported),'add');assert.equal(added.facilitationActivities.length,1);assert.equal(added.facilitationActivities[0].id,'act');
+ const replaced=restoreComplete(current,parseComplete(exported),'replace');assert.equal(replaced.facilitationActivities[0].favorite,true);assert.notEqual(replaced.facilitationActivities[0].id,'act');
+ const empty=restoreComplete(current,parseComplete(exportComplete({...data,facilitationActivities:[]})),'replace');assert.deepEqual(empty.facilitationActivities,[]);
+});
+test('complete restore failure and journal recovery preserve structured Activities',async()=>{
+ const before={...data,facilitationActivities:[activity]},store=memory();store.fail=true;
+ await assert.rejects(commitComplete(store,before,{...data,facilitationActivities:[]}));assert.deepEqual(store.current,before);
+ await store.begin(before);await store.packs([]);await recoverInterrupted(store);assert.deepEqual(store.current.facilitationActivities,[activity]);
+});
