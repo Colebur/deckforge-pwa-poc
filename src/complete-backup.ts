@@ -1,18 +1,19 @@
+import {decodeActivities,mergeActivities,type FacilitationActivity} from './activity-library.js';
 import {parseBackup,validateLibrary,restoreBackup,MAX_BACKUP_BYTES,NewerFormatError} from './backup.js';
 import {decodePacks} from './game-pack-storage.js';
 import {decodePreferences,type Preferences} from './refinements.js';
 import {emptyLibrary,type Library} from './model.js';
 import type {GamePack} from './party-content.js';
-export interface CompleteData {library:Library;packs:GamePack[];preferences:Preferences}
-export interface CompletePreview {library:Library;packs?:GamePack[];preferences?:Preferences;source:string}
+export interface CompleteData {library:Library;packs:GamePack[];preferences:Preferences;facilitationActivities?:FacilitationActivity[]}
+export interface CompletePreview {library:Library;packs?:GamePack[];preferences?:Preferences;facilitationActivities?:FacilitationActivity[];source:string}
 export function validateComplete(value:unknown):CompleteData {
  if(!value||typeof value!=='object')throw new Error('Invalid complete backup.');
  const v=value as Record<string,unknown>;
  if(!v.preferences||typeof v.preferences!=='object'||Array.isArray(v.preferences))throw new Error('Invalid saved settings.');
- return {library:validateLibrary(v.library),packs:decodePacks(v.packs),preferences:decodePreferences(v.preferences)};
+ return {library:validateLibrary(v.library),packs:decodePacks(v.packs),preferences:decodePreferences(v.preferences),...(v.facilitationActivities===undefined?{}:{facilitationActivities:decodeActivities(v.facilitationActivities)})};
 }
 export function exportComplete(value:CompleteData,now=new Date()):string {
- const text=JSON.stringify({format:'deckforge-complete-backup',version:1,exportedAt:now.toISOString(),...validateComplete(value)},null,2);if(new TextEncoder().encode(text).byteLength>MAX_BACKUP_BYTES)throw new Error('The complete backup exceeds 20 MB. Export individual collections instead.');return text;
+ const text=JSON.stringify({format:'deckforge-complete-backup',version:2,exportedAt:now.toISOString(),...validateComplete(value)},null,2);if(new TextEncoder().encode(text).byteLength>MAX_BACKUP_BYTES)throw new Error('The complete backup exceeds 20 MB. Export individual collections instead.');return text;
 }
 export function parseComplete(text:string):CompletePreview {
  if(new TextEncoder().encode(text).byteLength>MAX_BACKUP_BYTES)throw new Error('Choose a backup smaller than 20 MB.');
@@ -20,7 +21,7 @@ export function parseComplete(text:string):CompletePreview {
  if(v&&typeof v==='object'){
   const data=v as Record<string,unknown>;
   if(data.format==='deckforge-complete-backup'){
-   if(data.version!==1)throw new NewerFormatError('This complete backup needs a newer update. Nothing was changed.');
+   if(data.version!==1&&data.version!==2)throw new NewerFormatError('This complete backup needs a newer update. Nothing was changed.');
    return {...validateComplete(data),source:'Complete DeckForge backup'};
   }
   if(data.format==='deckforge-game-decks'){
@@ -32,7 +33,8 @@ export function parseComplete(text:string):CompletePreview {
 }
 export function restoreComplete(current:CompleteData,incoming:CompletePreview,mode:'add'|'replace',id=()=>crypto.randomUUID()):CompleteData {
  const packs=incoming.packs?.map(p=>({...structuredClone(p),id:id()}));
- return validateComplete({library:incoming.source.startsWith('Game Decks backup')?current.library:restoreBackup(current.library,incoming.library,mode,id),packs:packs===undefined?current.packs:mode==='add'?[...current.packs,...packs]:packs,preferences:mode==='replace'&&incoming.preferences?incoming.preferences:current.preferences});
+ const activities=incoming.facilitationActivities===undefined?current.facilitationActivities:mode==='replace'?incoming.facilitationActivities.map(a=>({...a,id:id()})):mergeActivities(current.facilitationActivities??[],incoming.facilitationActivities,id).items;
+ return validateComplete({...(activities===undefined?{}:{facilitationActivities:activities}),library:incoming.source.startsWith('Game Decks backup')?current.library:restoreBackup(current.library,incoming.library,mode,id),packs:packs===undefined?current.packs:mode==='add'?[...current.packs,...packs]:packs,preferences:mode==='replace'&&incoming.preferences?incoming.preferences:current.preferences});
 }
 // Two existing databases cannot share one IndexedDB transaction. Persist the
 // original snapshot first, then commit the core state only after packs succeed.
